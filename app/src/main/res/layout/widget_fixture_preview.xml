@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#17202A"
+    android:orientation="vertical"
+    android:padding="10dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="42dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:text="お気に入りの次の試合  3/10"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+        <TextView
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            android:gravity="center"
+            android:text="↻"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="58dp"
+        android:layout_marginBottom="5dp"
+        android:background="#30404D"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="10dp"
+        android:text="Arsenal                 8/30 (日) 22:00\nvs Liverpool   •   Premier League"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="58dp"
+        android:layout_marginBottom="5dp"
+        android:background="#30404D"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="10dp"
+        android:text="Barcelona              8/31 (月) 04:00\n@ Villarreal   •   La Liga"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="58dp"
+        android:background="#30404D"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="10dp"
+        android:text="Bayern                  9/1 (火) 01:30\nvs Dortmund   •   Bundesliga"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="22dp"
+        android:gravity="center_vertical|end"
+        android:text="更新 8/29 12:00"
+        android:textColor="#CCFFFFFF"
+        android:textSize="9sp" />
+</LinearLayout>

@@ -1,0 +1,8 @@
+<resources>
+    <color name="widget_bg">#E6111F</color>
+    <color name="widget_row">#20FFFFFF</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="white_80">#CCFFFFFF</color>
+    <color name="black">#FF111111</color>
+    <color name="screen_bg">#FFF5F5F5</color>
+</resources>

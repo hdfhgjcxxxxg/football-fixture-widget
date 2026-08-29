@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Android 11+ package visibility for optional football apps. -->
+    <queries>
+        <package android:name="com.mobilefootie.wc2010" />
+        <package android:name="com.sofascore.results" />
+        <package android:name="de.motain.iliga" />
+        <package android:name="eu.livesport.FlashScore_com" />
+        <package android:name="com.livescore" />
+        <package android:name="com.scores365" />
+    </queries>
+
+    <application
+        android:allowBackup="true"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.FootballFixtureWidget">
+
+        <activity
+            android:name=".MatchLinkRouterActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@style/Theme.FootballFixtureWidget.Transparent" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name=".FixtureWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/fixture_widget_info" />
+        </receiver>
+
+        <service
+            android:name=".FixtureRemoteViewsService"
+            android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+    </application>
+</manifest>

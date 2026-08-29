@@ -79,7 +79,8 @@ object FixtureRepository {
     private const val KEY_SOURCE_VERSION = "data_source_version"
     private const val SOURCE_VERSION_MULTI_PROVIDER = 3
 
-    const val MAX_FAVORITES = 10
+    // v11: お気に入りチーム数は上限なし。
+    const val MAX_FAVORITES = Int.MAX_VALUE
     const val DEFAULT_WIDGET_COLOR = 0xFF15171C.toInt()
 
     const val TAP_NONE = "none"
@@ -116,7 +117,7 @@ object FixtureRepository {
                         add(FavoriteTeam(stableId, name, fotmobId, sofascoreId, item.optString("country")))
                     }
                 }
-            }.distinctBy { normalizeTeamName(it.name) }.take(MAX_FAVORITES)
+            }.distinctBy { normalizeTeamName(it.name) }
         }.getOrDefault(emptyList())
     }
 
@@ -124,7 +125,7 @@ object FixtureRepository {
         val clean = teams
             .filter { it.id != 0 && it.name.isNotBlank() }
             .distinctBy { normalizeTeamName(it.name) }
-            .take(MAX_FAVORITES)
+
         val array = JSONArray()
         clean.forEach { team ->
             array.put(JSONObject().apply {
@@ -150,7 +151,6 @@ object FixtureRepository {
             saveFavoriteTeams(context, current)
             return true
         }
-        if (current.size >= MAX_FAVORITES) return false
         current += team
         saveFavoriteTeams(context, current)
         return true
@@ -563,8 +563,9 @@ object FixtureRepository {
             val slug = event.optString("slug").trim('/')
             val customId = event.optString("customId").trim('/')
             val sofaUrl = when {
-                slug.isNotBlank() && customId.isNotBlank() -> "https://www.sofascore.com/football/match/$slug/$customId"
-                eventId > 0L -> "https://www.sofascore.com/event/$eventId"
+                slug.isNotBlank() && customId.isNotBlank() -> "https://www.sofascore.com/football/match/$slug/$customId#id:$eventId"
+                slug.isNotBlank() && eventId > 0L -> "https://www.sofascore.com/football/match/$slug#id:$eventId"
+                eventId > 0L -> "https://www.sofascore.com/football/match/match#id:$eventId"
                 else -> ""
             }
             val homeName = home.optString("name").ifBlank { home.optString("shortName") }
@@ -625,9 +626,13 @@ object FixtureRepository {
             }
         }
 
-        val linked = ExternalMatchResolver.resolveForTarget(fixtures, getTapTarget(context))
+        // v11 resolves both providers regardless of the currently selected tap target so
+        // switching FotMob/SofaScore later never leaves stale/missing event IDs.
+        val linked = ExternalMatchResolver.resolveAll(fixtures)
         val state = WidgetState(linked, System.currentTimeMillis(), errors.firstOrNull())
         saveCache(context, state)
+        runCatching { AdvancedStatsRepository.refreshTeamExtras(context, favorites) }
+        runCatching { MatchPhaseScheduler.scheduleFromState(context, state) }
         return state
     }
 

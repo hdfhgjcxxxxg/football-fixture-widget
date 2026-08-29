@@ -45,8 +45,10 @@ object ExternalAppLauncher {
                     // v4 resolver stores Sofascore's real canonical match URL here.
                     if (sofascoreUrl.isNotBlank()) add(sofascoreUrl)
                     if (sofascoreEventId > 0L) {
-                        // Browser/API fallback only. Canonical URL is preferred above.
-                        add("https://www.sofascore.com/event/$sofascoreEventId")
+                        // Current public match pages use an #id fragment; Android App Links
+                        // can hand this exact event to the installed SofaScore app.
+                        add("https://www.sofascore.com/football/match/match#id:$sofascoreEventId")
+                        add("https://www.sofascore.com/football/match/#id:$sofascoreEventId")
                     }
                 }.distinct()
 

@@ -1,27 +1,17 @@
-# MatchDay Widget v10
+# MatchDay Widget v11.0
 
-Android football fixture widget with no API-key field.
+Android のサッカー用ウィジェット。チーム / 選手 / リーグを別ウィジェットとして配置し、ウィジェットごとに表示対象を選択できます。
 
-## Favorites
-- Teams: up to 10
-- Players: up to 10
-- Leagues/competitions: up to 10
+## v11 の主な変更
 
-The league-to-team picker now parses only explicit standings/team/match-team structures, so player names are not accepted as teams.
+- お気に入りチーム・選手・リーグの固定上限を撤廃
+- 各ウィジェット編集画面にオンライン検索を追加
+- 選手写真は FotMob / SofaScore を相互照合してフォールバック
+- SofaScore の event ID + `#id:` 付き試合 URL を使う直接リンクを強化
+- 選手: スタメン / ベンチ / ベンチ外、直近5試合の評価、前試合の評価・G/A・DF/GK のクリーンシート
+- チーム: 直近5試合の W/D/L + スコア、ライブスコア、前試合結果 + 次試合
+- キックオフ後はカウントダウンから試合時間表示へ切替
+- リーグ: 現在の節を構成する全試合を1行ずつ表示
+- 分・秒表示のON/OFFはウィジェットごとに保存
 
-## Three separate widgets
-Android's widget picker shows:
-- MatchDay • Teams
-- MatchDay • Players
-- MatchDay • Leagues
-
-When adding any widget, a configuration screen opens. Select the exact favorites for that widget instance. You can add multiple widgets of the same type and give each a different selection. Tap the widget title later to edit its selection.
-
-## Player widget
-Shows the favorite player, current club (when the provider supplies it), and the club's next fixture with 24-hour date/time + countdown.
-
-## League widget
-Shows the selected league and the next scheduled match in that competition.
-
-## Updates
-The included GitHub Actions workflow builds a fixed-signing release APK and publishes it as the latest GitHub Release. The installed app can check for releases every 12 hours and download a newer APK. Android still requires the final install/update confirmation tap.
+データは FotMob / SofaScore の公開Web JSONをベストエフォートで利用します。これらは公式開発者APIではないため、提供側の仕様変更時には更新が必要になる場合があります。

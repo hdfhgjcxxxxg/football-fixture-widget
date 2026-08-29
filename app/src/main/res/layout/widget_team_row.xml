@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/row_root"
     android:layout_width="match_parent"
-    android:layout_height="88dp"
+    android:layout_height="104dp"
     android:background="@drawable/widget_row_background"
     android:clipToOutline="true"
     android:gravity="center_vertical"
@@ -54,7 +54,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
             android:ellipsize="end"
-            android:maxLines="1"
+            android:maxLines="2"
             android:text="Premier League"
             android:textSize="9sp" />
 
@@ -63,7 +63,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:ellipsize="end"
-            android:maxLines="1"
+            android:maxLines="2"
             android:text="8/30 (日) 22:00"
             android:textSize="10sp" />
     </LinearLayout>

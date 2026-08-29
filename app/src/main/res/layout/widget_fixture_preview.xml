@@ -10,7 +10,7 @@
         android:layout_width="match_parent"
         android:layout_height="42dp"
         android:gravity="center_vertical"
-        android:text="NEXT MATCHES\nお気に入り 3/10"
+        android:text="NEXT MATCHES\nお気に入り 3件 • 上限なし"
         android:textColor="#FFFFFFFF"
         android:textSize="14sp"
         android:textStyle="bold" />

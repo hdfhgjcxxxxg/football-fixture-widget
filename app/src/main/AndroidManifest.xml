@@ -153,6 +153,10 @@
         </receiver>
 
         <receiver
+            android:name=".MatchPhaseReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".UpdateCheckReceiver"
             android:exported="false">
             <intent-filter>

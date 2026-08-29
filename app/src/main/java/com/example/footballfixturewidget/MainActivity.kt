@@ -152,7 +152,7 @@ class MainActivity : AppCompatActivity() {
             if (league == null) {
                 toast("お気に入りにするリーグを選んでください")
             } else if (!FavoriteEntityRepository.addFavoriteLeague(this, league)) {
-                toast("お気に入りリーグは最大${FavoriteEntityRepository.MAX_LEAGUES}件です")
+                toast("お気に入りリーグを追加できませんでした")
             } else {
                 refreshLeagueFavoritesUi()
                 toast("${league.name} をお気に入りに追加しました")
@@ -435,7 +435,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurface))
         })
         root.addView(TextView(this).apply {
-            text = "お気に入り選手は最大${FavoriteEntityRepository.MAX_PLAYERS}人 • タップですぐ追加/解除"
+            text = "お気に入り選手 • 上限なし • タップですぐ追加/解除"
             textSize = 13f
             setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
             setPadding(0, dp(4), 0, dp(12))
@@ -497,7 +497,7 @@ class MainActivity : AppCompatActivity() {
             if (saved != null) {
                 FavoriteEntityRepository.removeFavoritePlayer(this, saved.id)
             } else if (!FavoriteEntityRepository.addFavoritePlayer(this, player)) {
-                toast("最大${FavoriteEntityRepository.MAX_PLAYERS}人までです")
+                toast("選手を追加できませんでした")
             }
             renderButton()
             refreshPlayerFavoritesUi()
@@ -529,7 +529,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurface))
         })
         root.addView(TextView(this).apply {
-            text = "お気に入りは最大${FixtureRepository.MAX_FAVORITES}チーム • タップですぐ追加/解除"
+            text = "お気に入りチーム • 上限なし • タップですぐ追加/解除"
             textSize = 13f
             setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
             setPadding(0, dp(4), 0, dp(12))
@@ -598,7 +598,7 @@ class MainActivity : AppCompatActivity() {
                 refreshFavoritesUi()
             } else {
                 if (!FixtureRepository.addFavoriteTeam(this, team)) {
-                    toast("最大${FixtureRepository.MAX_FAVORITES}チームまでです")
+                    toast("チームを追加できませんでした")
                 } else {
                     renderButton()
                     refreshFavoritesUi()
@@ -621,7 +621,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshFavoritesUi() {
         val teams = FixtureRepository.getFavoriteTeams(this)
-        favoritesCount.text = "${teams.size} / ${FixtureRepository.MAX_FAVORITES}  •  先頭が初期チーム"
+        favoritesCount.text = "${teams.size}チーム • 上限なし • 先頭が初期チーム"
         favoritesContainer.removeAllViews()
 
         if (teams.isEmpty()) {
@@ -699,7 +699,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshPlayerFavoritesUi() {
         val players = FavoriteEntityRepository.getFavoritePlayers(this)
-        playersCount.text = "${players.size} / ${FavoriteEntityRepository.MAX_PLAYERS}"
+        playersCount.text = "${players.size}人 • 上限なし"
         favoritePlayersContainer.removeAllViews()
         if (players.isEmpty()) {
             favoritePlayersContainer.addView(TextView(this).apply {
@@ -763,7 +763,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshLeagueFavoritesUi() {
         val leagues = FavoriteEntityRepository.getFavoriteLeagues(this)
-        favoriteLeaguesCount.text = "${leagues.size} / ${FavoriteEntityRepository.MAX_LEAGUES}"
+        favoriteLeaguesCount.text = "${leagues.size}リーグ • 上限なし"
         favoriteLeaguesContainer.removeAllViews()
         if (leagues.isEmpty()) {
             favoriteLeaguesContainer.addView(TextView(this).apply {

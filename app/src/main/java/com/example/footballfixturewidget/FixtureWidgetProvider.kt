@@ -66,7 +66,7 @@ private object WidgetRenderer {
             else -> "チーム"
         }
         views.setTextViewText(R.id.widget_title, title)
-        views.setTextViewText(R.id.widget_subtitle, "$itemLabel ${selected.size}/10 • タップで選び直す")
+        views.setTextViewText(R.id.widget_subtitle, "$itemLabel ${selected.size}件 • 上限なし • タップで編集")
 
         val configClass = when (kind) {
             WidgetKinds.PLAYER -> PlayerWidgetConfigActivity::class.java

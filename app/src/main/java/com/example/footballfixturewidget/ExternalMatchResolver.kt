@@ -30,6 +30,8 @@ object ExternalMatchResolver {
         val pageUrl: String? = null
     )
 
+    fun resolveAll(fixtures: List<NextFixture>): List<NextFixture> = resolveSofaScore(resolveFotMob(fixtures))
+
     fun resolveForTarget(fixtures: List<NextFixture>, target: String): List<NextFixture> {
         if (fixtures.isEmpty()) return fixtures
         return when (target) {
@@ -83,7 +85,7 @@ object ExternalMatchResolver {
                     // Important: current Sofascore match pages use
                     // /football/match/{slug}/{customId}; /event/{eventId} is not the
                     // preferred public match-page URL and often won't deep-link.
-                    sofascoreUrl = match.pageUrl ?: "https://www.sofascore.com/event/${match.id}"
+                    sofascoreUrl = match.pageUrl ?: "https://www.sofascore.com/football/match/match#id:${match.id}"
                 )
             } else fixture
         }
@@ -143,9 +145,11 @@ object ExternalMatchResolver {
 
                 val slug = event.optString("slug").trim('/')
                 val customId = event.optString("customId").trim('/')
-                val canonicalUrl = if (slug.isNotBlank() && customId.isNotBlank()) {
-                    "https://www.sofascore.com/football/match/$slug/$customId"
-                } else null
+                val canonicalUrl = when {
+                    slug.isNotBlank() && customId.isNotBlank() -> "https://www.sofascore.com/football/match/$slug/$customId#id:$id"
+                    slug.isNotBlank() -> "https://www.sofascore.com/football/match/$slug#id:$id"
+                    else -> null
+                }
 
                 add(Candidate(id, home, away, kickoff, canonicalUrl))
             }

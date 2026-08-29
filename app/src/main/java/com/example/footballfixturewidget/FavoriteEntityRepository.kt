@@ -40,7 +40,7 @@ data class FavoriteLeague(
 }
 
 /**
- * Player/league favorites used by v10.
+ * Player/league favorites used by v11.
  * Team favorites stay in FixtureRepository so existing installs migrate without data loss.
  */
 object FavoriteEntityRepository {
@@ -48,8 +48,9 @@ object FavoriteEntityRepository {
     private const val KEY_PLAYERS = "favorite_players"
     private const val KEY_LEAGUES = "favorite_leagues"
 
-    const val MAX_PLAYERS = 10
-    const val MAX_LEAGUES = 10
+    // v11: お気に入り数に固定上限を設けない。
+    const val MAX_PLAYERS = Int.MAX_VALUE
+    const val MAX_LEAGUES = Int.MAX_VALUE
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -77,13 +78,13 @@ object FavoriteEntityRepository {
                         )
                     )
                 }
-            }.distinctBy { playerKey(it.name, it.teamName) }.take(MAX_PLAYERS)
+            }.distinctBy { playerKey(it.name, it.teamName) }
         }.getOrDefault(emptyList())
     }
 
     fun saveFavoritePlayers(context: Context, players: List<FavoritePlayer>) {
         val array = JSONArray()
-        players.distinctBy { playerKey(it.name, it.teamName) }.take(MAX_PLAYERS).forEach { p ->
+        players.distinctBy { playerKey(it.name, it.teamName) }.forEach { p ->
             array.put(JSONObject().apply {
                 put("id", p.id)
                 put("name", p.name)
@@ -108,7 +109,6 @@ object FavoriteEntityRepository {
             saveFavoritePlayers(context, current)
             return true
         }
-        if (current.size >= MAX_PLAYERS) return false
         current += player
         saveFavoritePlayers(context, current)
         return true
@@ -131,13 +131,13 @@ object FavoriteEntityRepository {
                         add(FavoriteLeague(id, name, o.optString("country"), o.optString("ccode")))
                     }
                 }
-            }.distinctBy { it.id }.take(MAX_LEAGUES)
+            }.distinctBy { it.id }
         }.getOrDefault(emptyList())
     }
 
     fun saveFavoriteLeagues(context: Context, leagues: List<FavoriteLeague>) {
         val array = JSONArray()
-        leagues.distinctBy { it.id }.take(MAX_LEAGUES).forEach { l ->
+        leagues.distinctBy { it.id }.forEach { l ->
             array.put(JSONObject().apply {
                 put("id", l.id)
                 put("name", l.name)
@@ -151,7 +151,6 @@ object FavoriteEntityRepository {
     fun addFavoriteLeague(context: Context, league: LeagueInfo): Boolean {
         val current = getFavoriteLeagues(context).toMutableList()
         if (current.any { it.id == league.id }) return true
-        if (current.size >= MAX_LEAGUES) return false
         current += FavoriteLeague(league.id, league.name, league.country, league.ccode)
         saveFavoriteLeagues(context, current)
         return true

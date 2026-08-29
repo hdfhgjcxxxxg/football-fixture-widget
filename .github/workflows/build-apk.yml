@@ -1,9 +1,7 @@
-name: Build APK
+name: Build Verified APK
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ "main", "master" ]
 
 permissions:
   contents: read
@@ -11,36 +9,65 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-
+    timeout-minutes: 25
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Restore fixed signing key
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.FFW_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "${KEYSTORE_B64:-}"
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$GITHUB_WORKSPACE/ffw-fixed-signing.jks"
 
       - name: Set up Gradle 9.5
-        uses: gradle/actions/setup-gradle@v6
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.0'
-          cache-provider: basic
 
-      - name: Build debug APK
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: Build release APK
+        env:
+          SIGNING_STORE_FILE: ${{ github.workspace }}/ffw-fixed-signing.jks
+          SIGNING_STORE_PASSWORD: ${{ secrets.FFW_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.FFW_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.FFW_KEY_PASSWORD }}
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
 
-      - name: Upload APK
+      - name: Verify APK structure and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$APK" | head -n 20
+          cp "$APK" FootballFixtureWidget.apk
+          sha256sum FootballFixtureWidget.apk > FootballFixtureWidget.apk.sha256
+
+      - name: Upload verified APK
         uses: actions/upload-artifact@v4
         with:
-          name: FootballFixtureWidget-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: FootballFixtureWidget-verified-apk
+          path: |
+            FootballFixtureWidget.apk
+            FootballFixtureWidget.apk.sha256
           if-no-files-found: error
           retention-days: 30

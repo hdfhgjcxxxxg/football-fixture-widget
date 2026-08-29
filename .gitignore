@@ -3,4 +3,6 @@
 local.properties
 **/build/
 *.iml
-.DS_Store
+*.jks
+*.keystore
+ffw-fixed-signing.jks

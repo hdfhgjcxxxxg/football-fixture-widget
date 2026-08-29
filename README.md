@@ -1,3 +1,5 @@
+v11.1: build fix + automatic share sheet on build failure
+
 # MatchDay Widget v11.0
 
 Android のサッカー用ウィジェット。チーム / 選手 / リーグを別ウィジェットとして配置し、ウィジェットごとに表示対象を選択できます。

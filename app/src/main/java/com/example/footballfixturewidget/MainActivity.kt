@@ -1,6 +1,6 @@
 package com.example.footballfixturewidget
 
-import android.content.ColorStateList
+import android.content.res.ColorStateList
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle

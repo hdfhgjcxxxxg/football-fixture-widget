@@ -69,7 +69,7 @@ abstract class BaseWidgetConfigActivity : AppCompatActivity() {
             setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurface))
         })
         root.addView(TextView(this).apply {
-            text = "このウィジェットだけに表示する$entityLabelを選びます。あとからウィジェットのタイトルをタップして変更できます。"
+            text = "このウィジェットだけに表示する${entityLabel}を選びます。あとからウィジェットのタイトルをタップして変更できます。"
             textSize = 14f
             setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
             setPadding(0, dp(8), 0, dp(18))
@@ -85,7 +85,7 @@ abstract class BaseWidgetConfigActivity : AppCompatActivity() {
                     orientation = LinearLayout.VERTICAL
                     setPadding(dp(18), dp(18), dp(18), dp(18))
                     addView(TextView(this@BaseWidgetConfigActivity).apply {
-                        text = "お気に入り$entityLabelがまだありません"
+                        text = "お気に入り${entityLabel}がまだありません"
                         textSize = 17f
                         setTypeface(typeface, android.graphics.Typeface.BOLD)
                     })
@@ -157,7 +157,7 @@ abstract class BaseWidgetConfigActivity : AppCompatActivity() {
     private fun saveAndFinish() {
         val ids = checks.filterValues { it.isChecked }.keys.toList()
         if (ids.isEmpty()) {
-            Toast.makeText(this, "表示する$entityLabelを1つ以上選んでください", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "表示する${entityLabel}を1つ以上選んでください", Toast.LENGTH_SHORT).show()
             return
         }
         WidgetSelectionStore.saveSelectedIds(this, widgetId, kind, ids)

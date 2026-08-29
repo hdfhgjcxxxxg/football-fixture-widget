@@ -114,7 +114,7 @@ private object WidgetRenderer {
         views.setEmptyView(R.id.fixture_list, R.id.empty_text)
         views.setTextViewText(
             R.id.empty_text,
-            if (selected.isEmpty()) "このウィジェットに表示する$itemLabelを選んでください" else "日程を取得しています…"
+            if (selected.isEmpty()) "このウィジェットに表示する${itemLabel}を選んでください" else "日程を取得しています…"
         )
 
         val clickTemplate = PendingIntent.getActivity(
@@ -131,7 +131,7 @@ private object WidgetRenderer {
             else -> FixtureRepository.loadCache(context).updatedAt
         }
         val status = statusOverride ?: when {
-            selected.isEmpty() -> "$itemLabel未選択"
+            selected.isEmpty() -> "${itemLabel}未選択"
             updatedAt <= 0L -> "未更新"
             else -> "更新 ${FixtureRepository.formatUpdatedAt(updatedAt)}"
         }

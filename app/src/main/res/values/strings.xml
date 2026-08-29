@@ -1,4 +1,4 @@
 <resources>
-    <string name="app_name">Football Fixtures</string>
-    <string name="widget_description">最大10チームのお気に入りクラブの次戦日程を表示します</string>
+    <string name="app_name">MatchDay Widget</string>
+    <string name="widget_description">お気に入りチームの次戦・24時間表記・カウントダウンを表示</string>
 </resources>

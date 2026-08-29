@@ -1,7 +1,10 @@
 package com.example.footballfixturewidget
 
+import android.content.ColorStateList
 import android.content.Context
 import android.content.Intent
+import android.os.Build
+import android.os.SystemClock
 import android.view.View
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
@@ -23,7 +26,6 @@ private class FixtureFactory(private val context: Context) : RemoteViewsService.
     }
 
     override fun onDestroy() = Unit
-
     override fun getCount(): Int = fixtures.size
 
     override fun getViewAt(position: Int): RemoteViews? {
@@ -34,23 +36,44 @@ private class FixtureFactory(private val context: Context) : RemoteViewsService.
         val secondary = FixtureRepository.secondaryTextColor(background)
         val rowColor = FixtureRepository.rowColor(background)
 
-        views.setInt(R.id.row_root, "setBackgroundColor", rowColor)
-        views.setTextColor(R.id.team_name, primary)
-        views.setTextColor(R.id.matchup, primary)
-        views.setTextColor(R.id.date_time, secondary)
-        views.setTextColor(R.id.competition, secondary)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            views.setColorStateList(R.id.row_root, "setBackgroundTintList", ColorStateList.valueOf(rowColor))
+        } else {
+            views.setInt(R.id.row_root, "setBackgroundColor", rowColor)
+        }
+
+        listOf(R.id.team_name, R.id.matchup, R.id.countdown).forEach { views.setTextColor(it, primary) }
+        listOf(R.id.date_time, R.id.competition, R.id.open_hint, R.id.countdown_label).forEach { views.setTextColor(it, secondary) }
 
         views.setTextViewText(R.id.team_name, item.teamName)
-        views.setTextViewText(R.id.date_time, if (item.hasMatch) FixtureRepository.formatDate(item.utcDate) else "日時未定")
         views.setTextViewText(
             R.id.matchup,
             if (item.hasMatch) (if (item.isHome) "vs " else "@ ") + item.opponent else item.opponent
         )
         views.setTextViewText(R.id.competition, item.competition)
+        views.setTextViewText(R.id.date_time, if (item.hasMatch) FixtureRepository.formatDate(item.utcDate) else "日時未定")
+
+        val logo = TeamLogoLoader.load(context, item.teamId)
+        if (logo != null) {
+            views.setImageViewBitmap(R.id.team_logo, logo)
+        } else {
+            views.setImageViewResource(R.id.team_logo, R.drawable.ic_launcher)
+        }
+
+        if (item.hasMatch && item.utcDate.isNotBlank()) {
+            val remaining = FixtureRepository.remainingMillis(item.utcDate)
+            val base = SystemClock.elapsedRealtime() + remaining
+            views.setViewVisibility(R.id.countdown_label, View.VISIBLE)
+            views.setViewVisibility(R.id.countdown, View.VISIBLE)
+            views.setChronometer(R.id.countdown, base, "%s", true)
+            views.setChronometerCountDown(R.id.countdown, true)
+        } else {
+            views.setViewVisibility(R.id.countdown_label, View.GONE)
+            views.setViewVisibility(R.id.countdown, View.GONE)
+        }
 
         val tapTarget = FixtureRepository.getTapTarget(context)
         views.setViewVisibility(R.id.open_hint, if (tapTarget == FixtureRepository.TAP_NONE) View.GONE else View.VISIBLE)
-        views.setTextColor(R.id.open_hint, secondary)
         views.setTextViewText(
             R.id.open_hint,
             when (tapTarget) {

@@ -33,7 +33,7 @@ object ExternalMatchResolver {
     fun resolveForTarget(fixtures: List<NextFixture>, target: String): List<NextFixture> {
         if (fixtures.isEmpty()) return fixtures
         return when (target) {
-            FixtureRepository.TAP_FOTMOB -> resolveFotMob(fixtures)
+            FixtureRepository.TAP_FOTMOB -> fixtures
             FixtureRepository.TAP_SOFASCORE -> resolveSofaScore(fixtures)
             else -> fixtures
         }

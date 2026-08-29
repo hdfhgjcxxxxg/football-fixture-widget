@@ -10,6 +10,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,7 +51,7 @@ jobs:
           SIGNING_KEY_PASSWORD: ${{ secrets.FFW_KEY_PASSWORD }}
         run: gradle :app:assembleRelease --no-daemon --stacktrace
 
-      - name: Verify APK structure and signature
+      - name: Verify APK
         shell: bash
         run: |
           set -euo pipefail
@@ -62,7 +63,7 @@ jobs:
           cp "$APK" FootballFixtureWidget.apk
           sha256sum FootballFixtureWidget.apk > FootballFixtureWidget.apk.sha256
 
-      - name: Upload verified APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: FootballFixtureWidget-verified-apk

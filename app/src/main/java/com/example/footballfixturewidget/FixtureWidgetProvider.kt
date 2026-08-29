@@ -3,10 +3,12 @@ package com.example.footballfixturewidget
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
+import android.content.ColorStateList
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.widget.RemoteViews
 
 class FixtureWidgetProvider : AppWidgetProvider() {
@@ -40,11 +42,25 @@ class FixtureWidgetProvider : AppWidgetProvider() {
             val secondaryText = FixtureRepository.secondaryTextColor(color)
             val favoriteCount = FixtureRepository.getFavoriteTeams(context).size
 
-            views.setInt(R.id.widget_root, "setBackgroundColor", color)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                views.setColorStateList(R.id.widget_root, "setBackgroundTintList", ColorStateList.valueOf(color))
+                views.setColorStateList(
+                    R.id.refresh_button,
+                    "setBackgroundTintList",
+                    ColorStateList.valueOf(FixtureRepository.accentRowColor(color))
+                )
+            } else {
+                views.setInt(R.id.widget_root, "setBackgroundColor", color)
+            }
+
             views.setTextColor(R.id.widget_title, primaryText)
+            views.setTextColor(R.id.widget_subtitle, secondaryText)
             views.setTextColor(R.id.refresh_button, primaryText)
             views.setTextColor(R.id.status_text, secondaryText)
-            views.setTextViewText(R.id.widget_title, "お気に入りの次の試合  $favoriteCount/10")
+            views.setTextColor(R.id.empty_text, secondaryText)
+
+            views.setTextViewText(R.id.widget_title, "NEXT MATCHES")
+            views.setTextViewText(R.id.widget_subtitle, "お気に入り $favoriteCount/${FixtureRepository.MAX_FAVORITES}")
 
             val openSettings = Intent(context, MainActivity::class.java)
             val openSettingsPending = PendingIntent.getActivity(
@@ -54,6 +70,7 @@ class FixtureWidgetProvider : AppWidgetProvider() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             views.setOnClickPendingIntent(R.id.widget_title, openSettingsPending)
+            views.setOnClickPendingIntent(R.id.widget_subtitle, openSettingsPending)
 
             val refreshIntent = Intent(context, FixtureWidgetProvider::class.java).apply {
                 action = ACTION_REFRESH
@@ -72,11 +89,7 @@ class FixtureWidgetProvider : AppWidgetProvider() {
             }
             views.setRemoteAdapter(R.id.fixture_list, serviceIntent)
             views.setEmptyView(R.id.fixture_list, R.id.empty_text)
-            views.setTextColor(R.id.empty_text, secondaryText)
 
-            // Launch a user-visible Activity directly from the widget tap.
-            // This avoids Android background-activity-launch restrictions that can
-            // block BroadcastReceiver -> FotMob/SofaScore navigation.
             val clickTemplate = PendingIntent.getActivity(
                 context,
                 3000 + widgetId,
@@ -85,15 +98,13 @@ class FixtureWidgetProvider : AppWidgetProvider() {
             )
             views.setPendingIntentTemplate(R.id.fixture_list, clickTemplate)
 
-            val tokenMissing = FixtureRepository.getToken(context).isBlank()
             val statusCore = statusOverride ?: when {
-                tokenMissing -> "APIキーを設定してください"
-                favoriteCount == 0 -> "お気に入りチームを選択してください"
-                state.error != null -> "一部更新失敗: ${state.error}"
+                favoriteCount == 0 -> "チームを追加してください"
+                state.error != null -> "一部更新失敗 • ${state.error}"
                 state.fixtures.isEmpty() -> "次の試合が見つかりません"
                 else -> "更新 ${FixtureRepository.formatUpdatedAt(state.updatedAt)}"
             }
-            views.setTextViewText(R.id.status_text, "football-data.org • $statusCore")
+            views.setTextViewText(R.id.status_text, "FotMob auto • $statusCore")
             manager.updateAppWidget(widgetId, views)
         }
     }

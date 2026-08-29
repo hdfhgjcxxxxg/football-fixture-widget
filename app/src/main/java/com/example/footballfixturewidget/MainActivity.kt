@@ -1,478 +1,426 @@
 package com.example.footballfixturewidget
 
-import android.app.Activity
-import android.app.AlertDialog
+import android.content.ColorStateList
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
-import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
 import android.widget.ArrayAdapter
-import android.widget.Button
+import android.widget.AutoCompleteTextView
 import android.widget.EditText
-import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
-import android.widget.ScrollView
-import android.widget.SeekBar
-import android.widget.Space
-import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
-import android.content.Intent
-import android.net.Uri
+import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.color.DynamicColors
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.textfield.TextInputEditText
 
-class MainActivity : Activity() {
-    private lateinit var favoritesContainer: LinearLayout
+class MainActivity : AppCompatActivity() {
+
+    private lateinit var apiBadge: TextView
+    private lateinit var apiStatus: TextView
+    private lateinit var testConnectionButton: MaterialButton
     private lateinit var favoritesCount: TextView
-    private lateinit var tokenInput: EditText
-    private lateinit var tapSpinner: Spinner
+    private lateinit var favoritesContainer: LinearLayout
+    private lateinit var leagueDropdown: AutoCompleteTextView
+    private lateinit var loadLeagueTeamsButton: MaterialButton
+    private lateinit var teamSearchInput: TextInputEditText
+    private lateinit var searchTeamButton: MaterialButton
+    private lateinit var tapTargetDropdown: AutoCompleteTextView
     private lateinit var colorPreview: View
-    private lateinit var colorHex: EditText
-    private lateinit var redSeek: SeekBar
-    private lateinit var greenSeek: SeekBar
-    private lateinit var blueSeek: SeekBar
-    private lateinit var redLabel: TextView
-    private lateinit var greenLabel: TextView
-    private lateinit var blueLabel: TextView
+    private lateinit var colorPresets: LinearLayout
+    private lateinit var colorHexInput: TextInputEditText
+    private lateinit var applyHexButton: MaterialButton
     private lateinit var progress: ProgressBar
-
-    private var selectedColor: Int = FixtureRepository.DEFAULT_WIDGET_COLOR
-    private var updatingColorControls = false
+    private lateinit var saveButton: MaterialButton
 
     private val density by lazy { resources.displayMetrics.density }
     private fun dp(value: Int) = (value * density).toInt()
 
+    private var selectedColor = FixtureRepository.DEFAULT_WIDGET_COLOR
+    private var leagueOptions: List<LeagueInfo> = emptyList()
+    private var selectedLeague: LeagueInfo? = null
+
+    private val tapLabels = listOf(
+        "FotMobのその試合を開く",
+        "SofaScoreのその試合を開く",
+        "OneFootballを開く",
+        "Flashscoreを開く",
+        "LiveScoreを開く",
+        "365Scoresを開く",
+        "何もしない",
+        "このアプリの設定を開く"
+    )
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        DynamicColors.applyToActivityIfAvailable(this)
+        setContentView(R.layout.activity_main)
+
+        bindViews()
         selectedColor = FixtureRepository.getWidgetColor(this)
-
-        val scroll = ScrollView(this)
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(24), dp(20), dp(40))
-            setBackgroundColor(Color.rgb(246, 247, 249))
-        }
-        scroll.addView(root)
-
-        root.addView(title("Football Fixtures", 28f))
-        root.addView(body("お気に入りのクラブを最大10チーム選び、それぞれの次の試合をホーム画面に表示します。最上段のチームが初期（先頭）チームです。"))
-
-        addSection(root, "1. API設定")
-        root.addView(label("football-data.org APIキー"))
-        tokenInput = EditText(this).apply {
-            hint = "APIキーを貼り付け"
-            setText(FixtureRepository.getToken(this@MainActivity))
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            setSingleLine(true)
-        }
-        root.addView(tokenInput, matchWrap())
-
-        val apiSiteButton = Button(this).apply {
-            text = "football-data.org を開く"
-            setOnClickListener { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.football-data.org/"))) }
-        }
-        root.addView(apiSiteButton, matchHeight(48, 8))
-
-        addSection(root, "2. お気に入りチーム")
-        favoritesCount = label("")
-        root.addView(favoritesCount)
-        root.addView(body("リーグからチーム一覧を読み込んで選択できます。最大10チーム。『先頭』でウィジェットの最初に表示するチームを変更できます。"))
-
-        val competitionSpinner = Spinner(this)
-        val competitionLabels = FixtureRepository.COMPETITIONS.map { "${it.first} (${it.second})" }
-        competitionSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, competitionLabels)
-        root.addView(competitionSpinner, matchWrap())
-
-        val loadTeamsButton = Button(this).apply {
-            text = "このリーグからチームを選ぶ"
-            setOnClickListener {
-                val code = FixtureRepository.COMPETITIONS[competitionSpinner.selectedItemPosition].second
-                loadCompetitionTeams(code)
-            }
-        }
-        root.addView(loadTeamsButton, matchHeight(52, 8))
-
-        root.addView(label("Team IDから直接追加（任意）").apply { setPadding(0, dp(16), 0, 0) })
-        val manualRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        val teamIdInput = EditText(this).apply {
-            hint = "例: 57"
-            inputType = InputType.TYPE_CLASS_NUMBER
-            setSingleLine(true)
-        }
-        manualRow.addView(teamIdInput, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        manualRow.addView(Button(this).apply {
-            text = "追加"
-            setOnClickListener {
-                val id = teamIdInput.text.toString().toIntOrNull()
-                if (id == null || id <= 0) {
-                    toast("Team IDを正しく入力してください")
-                    return@setOnClickListener
-                }
-                addManualTeam(id) { teamIdInput.text.clear() }
-            }
-        }, LinearLayout.LayoutParams(dp(96), dp(48)).apply { leftMargin = dp(8) })
-        root.addView(manualRow, matchWrap())
-
-        favoritesContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(8), 0, 0)
-        }
-        root.addView(favoritesContainer, matchWrap())
-
-        addSection(root, "3. チームをタップした時")
-        root.addView(body("ウィジェット内のチームを押したときの動作を選べます。FotMob / SofaScoreでは、そのチームの表示中の次の試合ページを直接開きます。試合IDを取得できない場合だけアプリ本体へフォールバックします。"))
-        tapSpinner = Spinner(this)
-        tapSpinner.adapter = ArrayAdapter(
-            this,
-            android.R.layout.simple_spinner_dropdown_item,
-            listOf(
-                "何もしない",
-                "FotMobのその試合を開く",
-                "SofaScoreのその試合を開く",
-                "OneFootballを開く",
-                "Flashscoreを開く",
-                "LiveScoreを開く",
-                "365Scoresを開く",
-                "このアプリの設定を開く"
-            )
-        )
-        tapSpinner.setSelection(
-            when (FixtureRepository.getTapTarget(this)) {
-                FixtureRepository.TAP_FOTMOB -> 1
-                FixtureRepository.TAP_SOFASCORE -> 2
-                FixtureRepository.TAP_ONEFOOTBALL -> 3
-                FixtureRepository.TAP_FLASHSCORE -> 4
-                FixtureRepository.TAP_LIVESCORE -> 5
-                FixtureRepository.TAP_365SCORES -> 6
-                FixtureRepository.TAP_SETTINGS -> 7
-                else -> 0
-            }
-        )
-        root.addView(tapSpinner, matchWrap())
-
-        addSection(root, "4. ウィジェットの色")
-        root.addView(body("RGBスライダーまたはHEX（例 #17202A）で好きな色を指定できます。文字色は読みやすいよう自動で白/黒に切り替わります。"))
-
-        colorPreview = View(this)
-        root.addView(colorPreview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(64)).apply { bottomMargin = dp(12) })
-
-        val hexRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        colorHex = EditText(this).apply {
-            hint = "#17202A"
-            setSingleLine(true)
-            inputType = InputType.TYPE_CLASS_TEXT
-        }
-        hexRow.addView(colorHex, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        hexRow.addView(Button(this).apply {
-            text = "HEX反映"
-            setOnClickListener {
-                val parsed = FixtureRepository.parseColorOrNull(colorHex.text.toString())
-                if (parsed == null) toast("HEXカラーを正しく入力してください") else setColorControls(parsed)
-            }
-        }, LinearLayout.LayoutParams(dp(112), dp(48)).apply { leftMargin = dp(8) })
-        root.addView(hexRow, matchWrap())
-
-        redLabel = label("")
-        redSeek = colorSeekBar()
-        root.addView(redLabel)
-        root.addView(redSeek, matchWrap())
-        greenLabel = label("")
-        greenSeek = colorSeekBar()
-        root.addView(greenLabel)
-        root.addView(greenSeek, matchWrap())
-        blueLabel = label("")
-        blueSeek = colorSeekBar()
-        root.addView(blueLabel)
-        root.addView(blueSeek, matchWrap())
-
-        val presetScroller = HorizontalScrollView(this)
-        val presets = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        listOf(
-            "濃紺" to Color.rgb(23, 32, 42),
-            "黒" to Color.BLACK,
-            "白" to Color.WHITE,
-            "赤" to Color.rgb(190, 30, 45),
-            "青" to Color.rgb(20, 80, 180),
-            "緑" to Color.rgb(20, 120, 75),
-            "紫" to Color.rgb(95, 55, 160)
-        ).forEach { (name, color) ->
-            presets.addView(Button(this).apply {
-                text = name
-                setOnClickListener { setColorControls(color) }
-            }, LinearLayout.LayoutParams(dp(82), dp(44)).apply { rightMargin = dp(6) })
-        }
-        presetScroller.addView(presets)
-        root.addView(presetScroller, matchWrap().apply { topMargin = dp(8) })
-
-        progress = ProgressBar(this).apply { visibility = View.GONE }
-        root.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)).apply { topMargin = dp(12) })
-
-        val saveButton = Button(this).apply {
-            text = "設定を保存してウィジェットを更新"
-            textSize = 16f
-            setOnClickListener { saveAndRefresh() }
-        }
-        root.addView(saveButton, matchHeight(58, 14))
-
-        root.addView(body("試合日時は端末のタイムゾーンで『8/30 (日) 22:00』のように曜日＋24時間表記で表示されます。FotMob / SofaScoreを選んだ場合は更新時に外部サービスの試合IDも照合します。ウィジェット右上の ↻ で手動更新できます。\nPrimary fixture data provided by football-data.org"))
-
-        setContentView(scroll)
-        attachColorListeners()
-        setColorControls(selectedColor)
+        setupTapTarget()
+        setupColorControls()
+        setupActions()
         refreshFavoritesUi()
+        migrateOldFavoritesAndLoadLeagues()
     }
 
-    private fun addSection(root: LinearLayout, text: String) {
-        root.addView(TextView(this).apply {
-            this.text = text
-            textSize = 20f
-            setTextColor(Color.rgb(20, 20, 20))
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setPadding(0, dp(28), 0, dp(8))
-        })
+    private fun bindViews() {
+        apiBadge = findViewById(R.id.api_badge)
+        apiStatus = findViewById(R.id.api_status)
+        testConnectionButton = findViewById(R.id.test_connection_button)
+        favoritesCount = findViewById(R.id.favorites_count)
+        favoritesContainer = findViewById(R.id.favorites_container)
+        leagueDropdown = findViewById(R.id.league_dropdown)
+        loadLeagueTeamsButton = findViewById(R.id.load_league_teams_button)
+        teamSearchInput = findViewById(R.id.team_search_input)
+        searchTeamButton = findViewById(R.id.search_team_button)
+        tapTargetDropdown = findViewById(R.id.tap_target_dropdown)
+        colorPreview = findViewById(R.id.color_preview)
+        colorPresets = findViewById(R.id.color_presets)
+        colorHexInput = findViewById(R.id.color_hex_input)
+        applyHexButton = findViewById(R.id.apply_hex_button)
+        progress = findViewById(R.id.progress)
+        saveButton = findViewById(R.id.save_button)
+    }
+
+    private fun setupActions() {
+        testConnectionButton.setOnClickListener { loadLeagueDirectory(showSuccessToast = true) }
+
+        leagueDropdown.setOnItemClickListener { parent, _, position, _ ->
+            val label = parent.getItemAtPosition(position)?.toString().orEmpty()
+            selectedLeague = leagueOptions.firstOrNull { it.label == label }
+        }
+
+        loadLeagueTeamsButton.setOnClickListener {
+            val league = selectedLeague
+            if (league == null) {
+                toast("リーグ・大会を選んでください")
+            } else {
+                loadTeamsForLeague(league)
+            }
+        }
+
+        searchTeamButton.setOnClickListener { searchTeams() }
+        teamSearchInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                searchTeams()
+                true
+            } else false
+        }
+
+        applyHexButton.setOnClickListener {
+            val parsed = FixtureRepository.parseColorOrNull(colorHexInput.text?.toString().orEmpty())
+            if (parsed == null) toast("HEXカラーを正しく入力してください") else setSelectedColor(parsed)
+        }
+
+        saveButton.setOnClickListener { saveAndRefresh() }
+    }
+
+    private fun setupTapTarget() {
+        tapTargetDropdown.setAdapter(
+            ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, tapLabels)
+        )
+        tapTargetDropdown.setText(labelForTapTarget(FixtureRepository.getTapTarget(this)), false)
+    }
+
+    private fun setupColorControls() {
+        setSelectedColor(selectedColor)
+        val presets = listOf(
+            0xFF15171C.toInt(),
+            0xFF0F172A.toInt(),
+            0xFF1D4ED8.toInt(),
+            0xFF6D28D9.toInt(),
+            0xFFB91C1C.toInt(),
+            0xFF047857.toInt(),
+            0xFFF1F5F9.toInt(),
+            0xFFFFFFFF.toInt()
+        )
+        colorPresets.removeAllViews()
+        presets.forEachIndexed { index, color ->
+            val button = MaterialButton(this).apply {
+                text = ""
+                contentDescription = "カラープリセット ${index + 1}"
+                setBackgroundTintList(ColorStateList.valueOf(color))
+                setCornerRadius(dp(26))
+                setInsetTop(0)
+                setInsetBottom(0)
+                setStrokeWidth(dp(1))
+                setStrokeColor(ColorStateList.valueOf(if (Color.luminance(color) > 0.7) 0x33000000 else 0x44FFFFFF))
+                setOnClickListener { setSelectedColor(color) }
+            }
+            colorPresets.addView(button, LinearLayout.LayoutParams(dp(52), dp(52)).apply {
+                marginEnd = dp(10)
+            })
+        }
+    }
+
+    private fun setSelectedColor(color: Int) {
+        selectedColor = color
+        colorPreview.backgroundTintList = ColorStateList.valueOf(color)
+        colorHexInput.setText(FixtureRepository.colorToHex(color))
+    }
+
+    private fun migrateOldFavoritesAndLoadLeagues() {
+        setBusy(true)
+        Thread {
+            val migrated = runCatching { FixtureRepository.migrateFavoritesToFotMobIfNeeded(this) }.getOrDefault(false)
+            runOnUiThread {
+                if (migrated) {
+                    refreshFavoritesUi()
+                    toast("お気に入りを新しい自動データ方式へ移行しました")
+                }
+            }
+            val result = runCatching { FixtureRepository.fetchLeagueDirectory() }
+            runOnUiThread {
+                setBusy(false)
+                result.onSuccess { applyLeagueDirectory(it, false) }
+                    .onFailure {
+                        apiBadge.text = "再試行"
+                        apiStatus.text = "自動接続できませんでした • ${it.message ?: "通信エラー"}"
+                    }
+            }
+        }.start()
+    }
+
+    private fun loadLeagueDirectory(showSuccessToast: Boolean) {
+        setBusy(true)
+        apiStatus.text = "FotMobへ接続中…"
+        Thread {
+            val result = runCatching { FixtureRepository.fetchLeagueDirectory() }
+            runOnUiThread {
+                setBusy(false)
+                result.onSuccess { applyLeagueDirectory(it, showSuccessToast) }
+                    .onFailure {
+                        apiBadge.text = "エラー"
+                        apiStatus.text = "接続失敗 • ${it.message ?: "通信エラー"}"
+                        toast("データ接続に失敗しました")
+                    }
+            }
+        }.start()
+    }
+
+    private fun applyLeagueDirectory(leagues: List<LeagueInfo>, showToast: Boolean) {
+        leagueOptions = leagues
+        selectedLeague = null
+        leagueDropdown.setAdapter(
+            ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, leagues.map { it.label })
+        )
+        leagueDropdown.setText("", false)
+        apiBadge.text = "接続済み"
+        apiStatus.text = "APIキー不要 • ${leagues.size}リーグ/大会を自動取得"
+        if (showToast) toast("接続OK：${leagues.size}大会を取得しました")
+    }
+
+    private fun loadTeamsForLeague(league: LeagueInfo) {
+        setBusy(true)
+        Thread {
+            val result = runCatching { FixtureRepository.fetchTeamsForLeague(league.id) }
+            runOnUiThread {
+                setBusy(false)
+                result.onSuccess { teams ->
+                    if (teams.isEmpty()) toast("この大会からチーム一覧を取得できませんでした")
+                    else showTeamPicker(league.name, teams)
+                }.onFailure { toast("チーム取得失敗: ${it.message ?: "通信エラー"}") }
+            }
+        }.start()
+    }
+
+    private fun searchTeams() {
+        val query = teamSearchInput.text?.toString()?.trim().orEmpty()
+        if (query.length < 2) {
+            toast("チーム名を2文字以上入力してください")
+            return
+        }
+        setBusy(true)
+        Thread {
+            val result = runCatching { FixtureRepository.searchTeams(query) }
+            runOnUiThread {
+                setBusy(false)
+                result.onSuccess { teams ->
+                    if (teams.isEmpty()) toast("チームが見つかりませんでした")
+                    else showTeamPicker("「$query」の検索結果", teams)
+                }.onFailure { toast("検索失敗: ${it.message ?: "通信エラー"}") }
+            }
+        }.start()
+    }
+
+    private fun showTeamPicker(title: String, candidates: List<FavoriteTeam>) {
+        val current = FixtureRepository.getFavoriteTeams(this)
+        val currentIds = current.map { it.id }.toMutableSet()
+        val labels = candidates.map { it.name }.toTypedArray()
+        val checked = BooleanArray(candidates.size) { candidates[it].id in currentIds }
+
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(title)
+            .setMessage("お気に入りは最大${FixtureRepository.MAX_FAVORITES}チーム。複数選択できます。")
+            .setMultiChoiceItems(labels, checked) { dialogInterface, which, isChecked ->
+                val team = candidates[which]
+                if (isChecked) {
+                    val candidateTotal = currentIds.size + if (team.id in currentIds) 0 else 1
+                    if (candidateTotal > FixtureRepository.MAX_FAVORITES) {
+                        (dialogInterface as? androidx.appcompat.app.AlertDialog)?.listView?.setItemChecked(which, false)
+                        toast("最大${FixtureRepository.MAX_FAVORITES}チームまでです")
+                    } else {
+                        currentIds += team.id
+                    }
+                } else {
+                    currentIds -= team.id
+                }
+            }
+            .setNegativeButton("キャンセル", null)
+            .setPositiveButton("反映", null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val existingOutside = current.filter { old -> candidates.none { it.id == old.id } }
+                val selectedInside = candidates.filter { it.id in currentIds }
+                val combined = (existingOutside + selectedInside).distinctBy { it.id }.take(FixtureRepository.MAX_FAVORITES)
+                FixtureRepository.saveFavoriteTeams(this, combined)
+                refreshFavoritesUi()
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
     }
 
     private fun refreshFavoritesUi() {
         val teams = FixtureRepository.getFavoriteTeams(this)
-        favoritesCount.text = "選択中: ${teams.size} / ${FixtureRepository.MAX_FAVORITES}"
+        favoritesCount.text = "${teams.size} / ${FixtureRepository.MAX_FAVORITES}  •  先頭が初期チーム"
         favoritesContainer.removeAllViews()
+
         if (teams.isEmpty()) {
-            favoritesContainer.addView(body("まだチームが選択されていません。最初に追加したチームが初期チームになります。"))
+            favoritesContainer.addView(TextView(this).apply {
+                text = "まだチームがありません。リーグまたは検索から追加してください。"
+                setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+                textSize = 14f
+                setPadding(dp(4), dp(10), dp(4), dp(6))
+            })
             return
         }
 
         teams.forEachIndexed { index, team ->
+            val card = MaterialCardView(this).apply {
+                radius = dp(18).toFloat()
+                cardElevation = 0f
+                setCardBackgroundColor(resolveThemeColor(com.google.android.material.R.attr.colorSurfaceContainerHighest))
+            }
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(10), dp(7), dp(4), dp(7))
-                setBackgroundColor(if (index == 0) Color.rgb(229, 239, 255) else Color.WHITE)
+                setPadding(dp(14), dp(12), dp(10), dp(12))
             }
-            row.addView(TextView(this).apply {
-                text = if (index == 0) "★ ${team.name}\n初期/先頭チーム" else team.name
-                textSize = 15f
-                setTextColor(Color.rgb(25, 25, 25))
-            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+            val avatar = TextView(this).apply {
+                text = team.name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "•"
+                gravity = Gravity.CENTER
+                textSize = 17f
+                setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnPrimaryContainer))
+                setBackgroundResource(R.drawable.team_avatar_background)
+                backgroundTintList = ColorStateList.valueOf(resolveThemeColor(com.google.android.material.R.attr.colorPrimaryContainer))
+            }
+            row.addView(avatar, LinearLayout.LayoutParams(dp(44), dp(44)))
+
+            val nameBox = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), 0, dp(8), 0)
+            }
+            nameBox.addView(TextView(this).apply {
+                text = team.name
+                textSize = 16f
+                setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurface))
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+            nameBox.addView(TextView(this).apply {
+                text = if (index == 0) "初期チーム • FotMob ID ${team.id}" else "FotMob ID ${team.id}"
+                textSize = 12f
+                setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+            })
+            row.addView(nameBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
             if (index != 0) {
-                row.addView(Button(this).apply {
+                row.addView(MaterialButton(this).apply {
                     text = "先頭"
+                    textSize = 12f
                     setOnClickListener {
                         FixtureRepository.moveFavoriteToTop(this@MainActivity, team.id)
                         refreshFavoritesUi()
-                        notifyWidgetDataChanged()
                     }
-                }, LinearLayout.LayoutParams(dp(72), dp(44)))
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(42)).apply { marginEnd = dp(4) })
             }
-            row.addView(Button(this).apply {
+
+            row.addView(MaterialButton(this).apply {
                 text = "削除"
+                textSize = 12f
                 setOnClickListener {
                     FixtureRepository.removeFavoriteTeam(this@MainActivity, team.id)
                     refreshFavoritesUi()
-                    notifyWidgetDataChanged()
                 }
-            }, LinearLayout.LayoutParams(dp(72), dp(44)).apply { leftMargin = dp(5) })
-            favoritesContainer.addView(row, matchWrap().apply { bottomMargin = dp(6) })
-        }
-    }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(42)))
 
-    private fun loadCompetitionTeams(code: String) {
-        val token = tokenInput.text.toString().trim()
-        if (token.isBlank()) {
-            toast("先にAPIキーを入力してください")
-            return
+            card.addView(row)
+            favoritesContainer.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(8)
+            })
         }
-        FixtureRepository.saveToken(this, token)
-        setBusy(true)
-        Thread {
-            try {
-                val teams = FixtureRepository.fetchTeamsForCompetition(this, code)
-                runOnUiThread {
-                    setBusy(false)
-                    showTeamPicker(teams)
-                }
-            } catch (t: Throwable) {
-                runOnUiThread {
-                    setBusy(false)
-                    toast("チーム一覧の取得に失敗: ${t.message}")
-                }
-            }
-        }.start()
-    }
-
-    private fun showTeamPicker(allTeams: List<FavoriteTeam>) {
-        val current = FixtureRepository.getFavoriteTeams(this)
-        val currentIds = current.map { it.id }.toSet()
-        val available = allTeams.filterNot { it.id in currentIds }
-        if (available.isEmpty()) {
-            toast("追加できるチームがありません")
-            return
-        }
-        val remaining = FixtureRepository.MAX_FAVORITES - current.size
-        if (remaining <= 0) {
-            toast("お気に入りは最大10チームです")
-            return
-        }
-
-        val checked = BooleanArray(available.size)
-        AlertDialog.Builder(this)
-            .setTitle("チームを選択（あと${remaining}チーム）")
-            .setMultiChoiceItems(available.map { it.name }.toTypedArray(), checked) { dialog, which, isChecked ->
-                checked[which] = isChecked
-                if (checked.count { it } > remaining) {
-                    checked[which] = false
-                    (dialog as AlertDialog).listView.setItemChecked(which, false)
-                    toast("あと${remaining}チームまで追加できます")
-                }
-            }
-            .setPositiveButton("追加") { _, _ ->
-                val chosen = available.filterIndexed { index, _ -> checked[index] }
-                val merged = (current + chosen).distinctBy { it.id }.take(FixtureRepository.MAX_FAVORITES)
-                FixtureRepository.saveFavoriteTeams(this, merged)
-                refreshFavoritesUi()
-                requestWidgetRefresh()
-            }
-            .setNegativeButton("キャンセル", null)
-            .show()
-    }
-
-    private fun addManualTeam(teamId: Int, onSuccess: () -> Unit) {
-        val current = FixtureRepository.getFavoriteTeams(this)
-        if (current.size >= FixtureRepository.MAX_FAVORITES) {
-            toast("お気に入りは最大10チームです")
-            return
-        }
-        val token = tokenInput.text.toString().trim()
-        if (token.isBlank()) {
-            toast("先にAPIキーを入力してください")
-            return
-        }
-        FixtureRepository.saveToken(this, token)
-        setBusy(true)
-        Thread {
-            try {
-                val team = FixtureRepository.resolveTeam(this, teamId)
-                val ok = FixtureRepository.addFavoriteTeam(this, team)
-                runOnUiThread {
-                    setBusy(false)
-                    if (ok) {
-                        onSuccess()
-                        refreshFavoritesUi()
-                        requestWidgetRefresh()
-                        toast("${team.name} を追加しました")
-                    } else toast("お気に入りは最大10チームです")
-                }
-            } catch (t: Throwable) {
-                runOnUiThread {
-                    setBusy(false)
-                    toast("チーム取得に失敗: ${t.message}")
-                }
-            }
-        }.start()
     }
 
     private fun saveAndRefresh() {
-        FixtureRepository.saveToken(this, tokenInput.text.toString())
+        val target = tapTargetForLabel(tapTargetDropdown.text?.toString().orEmpty())
+        FixtureRepository.saveTapTarget(this, target)
         FixtureRepository.saveWidgetColor(this, selectedColor)
-        FixtureRepository.saveTapTarget(
-            this,
-            when (tapSpinner.selectedItemPosition) {
-                1 -> FixtureRepository.TAP_FOTMOB
-                2 -> FixtureRepository.TAP_SOFASCORE
-                3 -> FixtureRepository.TAP_ONEFOOTBALL
-                4 -> FixtureRepository.TAP_FLASHSCORE
-                5 -> FixtureRepository.TAP_LIVESCORE
-                6 -> FixtureRepository.TAP_365SCORES
-                7 -> FixtureRepository.TAP_SETTINGS
-                else -> FixtureRepository.TAP_NONE
-            }
-        )
+        FixtureWidgetProvider.renderAll(this, statusOverride = "更新中…")
         sendBroadcast(Intent(this, FixtureWidgetProvider::class.java).apply {
             action = FixtureWidgetProvider.ACTION_REFRESH
         })
-        notifyWidgetDataChanged()
-        toast("設定を保存しました")
+        toast("保存しました。試合日程を更新しています")
     }
 
-    private fun requestWidgetRefresh() {
-        sendBroadcast(Intent(this, FixtureWidgetProvider::class.java).apply {
-            action = FixtureWidgetProvider.ACTION_REFRESH
-        })
+    private fun labelForTapTarget(value: String): String = when (value) {
+        FixtureRepository.TAP_FOTMOB -> tapLabels[0]
+        FixtureRepository.TAP_SOFASCORE -> tapLabels[1]
+        FixtureRepository.TAP_ONEFOOTBALL -> tapLabels[2]
+        FixtureRepository.TAP_FLASHSCORE -> tapLabels[3]
+        FixtureRepository.TAP_LIVESCORE -> tapLabels[4]
+        FixtureRepository.TAP_365SCORES -> tapLabels[5]
+        FixtureRepository.TAP_NONE -> tapLabels[6]
+        FixtureRepository.TAP_SETTINGS -> tapLabels[7]
+        else -> tapLabels[0]
     }
 
-    private fun notifyWidgetDataChanged() {
-        FixtureWidgetProvider.renderAll(this)
+    private fun tapTargetForLabel(label: String): String = when (label) {
+        tapLabels[1] -> FixtureRepository.TAP_SOFASCORE
+        tapLabels[2] -> FixtureRepository.TAP_ONEFOOTBALL
+        tapLabels[3] -> FixtureRepository.TAP_FLASHSCORE
+        tapLabels[4] -> FixtureRepository.TAP_LIVESCORE
+        tapLabels[5] -> FixtureRepository.TAP_365SCORES
+        tapLabels[6] -> FixtureRepository.TAP_NONE
+        tapLabels[7] -> FixtureRepository.TAP_SETTINGS
+        else -> FixtureRepository.TAP_FOTMOB
     }
 
-    private fun attachColorListeners() {
-        val listener = object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (!fromUser || updatingColorControls) return
-                selectedColor = Color.rgb(redSeek.progress, greenSeek.progress, blueSeek.progress)
-                updateColorPreviewOnly()
-            }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
-            override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
-        }
-        redSeek.setOnSeekBarChangeListener(listener)
-        greenSeek.setOnSeekBarChangeListener(listener)
-        blueSeek.setOnSeekBarChangeListener(listener)
+    private fun setBusy(busy: Boolean) {
+        progress.visibility = if (busy) View.VISIBLE else View.GONE
+        testConnectionButton.isEnabled = !busy
+        loadLeagueTeamsButton.isEnabled = !busy
+        searchTeamButton.isEnabled = !busy
+        saveButton.isEnabled = !busy
     }
 
-    private fun setColorControls(color: Int) {
-        selectedColor = Color.rgb(Color.red(color), Color.green(color), Color.blue(color))
-        updatingColorControls = true
-        redSeek.progress = Color.red(selectedColor)
-        greenSeek.progress = Color.green(selectedColor)
-        blueSeek.progress = Color.blue(selectedColor)
-        updatingColorControls = false
-        updateColorPreviewOnly()
+    private fun resolveThemeColor(attr: Int): Int {
+        val out = android.util.TypedValue()
+        theme.resolveAttribute(attr, out, true)
+        return if (out.resourceId != 0) getColor(out.resourceId) else out.data
     }
 
-    private fun updateColorPreviewOnly() {
-        colorPreview.setBackgroundColor(selectedColor)
-        colorHex.setText(FixtureRepository.colorToHex(selectedColor))
-        colorHex.setSelection(colorHex.text.length)
-        redLabel.text = "R: ${Color.red(selectedColor)}"
-        greenLabel.text = "G: ${Color.green(selectedColor)}"
-        blueLabel.text = "B: ${Color.blue(selectedColor)}"
-    }
-
-    private fun colorSeekBar() = SeekBar(this).apply { max = 255 }
-
-    private fun setBusy(value: Boolean) {
-        progress.visibility = if (value) View.VISIBLE else View.GONE
-    }
-
-    private fun title(text: String, size: Float) = TextView(this).apply {
-        this.text = text
-        textSize = size
-        setTextColor(Color.rgb(17, 17, 17))
-        setTypeface(typeface, android.graphics.Typeface.BOLD)
-    }
-
-    private fun label(text: String) = TextView(this).apply {
-        this.text = text
-        textSize = 14f
-        setTextColor(Color.rgb(70, 70, 70))
-    }
-
-    private fun body(text: String) = TextView(this).apply {
-        this.text = text
-        textSize = 14f
-        setTextColor(Color.rgb(82, 82, 82))
-        setPadding(0, dp(6), 0, dp(8))
-        setLineSpacing(0f, 1.15f)
-    }
-
-    private fun matchWrap() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-
-    private fun matchHeight(height: Int, top: Int = 0) =
-        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(height)).apply { topMargin = dp(top) }
-
-    private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
+    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 }

@@ -33,7 +33,7 @@ object ExternalMatchResolver {
     fun resolveForTarget(fixtures: List<NextFixture>, target: String): List<NextFixture> {
         if (fixtures.isEmpty()) return fixtures
         return when (target) {
-            FixtureRepository.TAP_FOTMOB -> fixtures
+            FixtureRepository.TAP_FOTMOB -> resolveFotMob(fixtures)
             FixtureRepository.TAP_SOFASCORE -> resolveSofaScore(fixtures)
             else -> fixtures
         }
@@ -42,7 +42,7 @@ object ExternalMatchResolver {
     private fun resolveFotMob(fixtures: List<NextFixture>): List<NextFixture> {
         val byDate = mutableMapOf<LocalDate, List<Candidate>>()
         return fixtures.map { fixture ->
-            if (!fixture.hasMatch || fixture.utcDate.isBlank()) return@map fixture
+            if (!fixture.hasMatch || fixture.utcDate.isBlank() || fixture.fotmobMatchId > 0L) return@map fixture
             val match = candidateDates(fixture.utcDate).asSequence()
                 .flatMap { date ->
                     byDate.getOrPut(date) { runCatching { fetchFotMobDate(date) }.getOrDefault(emptyList()) }.asSequence()
@@ -66,7 +66,7 @@ object ExternalMatchResolver {
     private fun resolveSofaScore(fixtures: List<NextFixture>): List<NextFixture> {
         val byDate = mutableMapOf<LocalDate, List<Candidate>>()
         return fixtures.map { fixture ->
-            if (!fixture.hasMatch || fixture.utcDate.isBlank()) return@map fixture
+            if (!fixture.hasMatch || fixture.utcDate.isBlank() || fixture.sofascoreEventId > 0L) return@map fixture
             val match = candidateDates(fixture.utcDate).asSequence()
                 .flatMap { date ->
                     byDate.getOrPut(date) { runCatching { fetchSofaDate(date) }.getOrDefault(emptyList()) }.asSequence()

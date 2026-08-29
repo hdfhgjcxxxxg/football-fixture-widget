@@ -2,8 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
-    <!-- Android 11+ package visibility for optional football apps. -->
     <queries>
         <package android:name="com.mobilefootie.wc2010" />
         <package android:name="com.sofascore.results" />
@@ -15,10 +17,66 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@drawable/launcher_style_1"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.FootballFixtureWidget">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true" />
+
+        <activity-alias
+            android:name=".LauncherAlias1"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@drawable/launcher_style_1"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherAlias2"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/launcher_style_2"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherAlias3"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/launcher_style_3"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherAlias4"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/launcher_style_4"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
 
         <activity
             android:name=".MatchLinkRouterActivity"
@@ -28,13 +86,11 @@
             android:theme="@style/Theme.FootballFixtureWidget.Transparent" />
 
         <activity
-            android:name=".MainActivity"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:name=".UpdateInstallActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@style/Theme.FootballFixtureWidget.Transparent" />
 
         <receiver
             android:name=".FixtureWidgetProvider"
@@ -47,10 +103,30 @@
                 android:resource="@xml/fixture_widget_info" />
         </receiver>
 
+        <receiver
+            android:name=".UpdateCheckReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name=".FixtureRemoteViewsService"
             android:exported="false"
             android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 </manifest>

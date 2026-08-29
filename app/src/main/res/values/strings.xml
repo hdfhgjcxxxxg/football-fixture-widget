@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">MatchDay Widget</string>
     <string name="widget_description">お気に入りチームの次戦・24時間表記・カウントダウンを表示</string>
+    <string name="update_repo">hdfhgjcxxxxg/football-fixture-widget</string>
 </resources>

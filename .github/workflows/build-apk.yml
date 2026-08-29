@@ -2,9 +2,11 @@ name: Build Verified APK
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -63,7 +65,7 @@ jobs:
           cp "$APK" FootballFixtureWidget.apk
           sha256sum FootballFixtureWidget.apk > FootballFixtureWidget.apk.sha256
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: FootballFixtureWidget-verified-apk
@@ -72,3 +74,23 @@ jobs:
             FootballFixtureWidget.apk.sha256
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish update release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION_CODE="$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n1)"
+          VERSION_NAME="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)"
+          test -n "$VERSION_CODE"
+          test -n "$VERSION_NAME"
+          TAG="v${VERSION_NAME}-${VERSION_CODE}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" FootballFixtureWidget.apk FootballFixtureWidget.apk.sha256 --clobber
+            gh release edit "$TAG" --title "MatchDay Widget v${VERSION_NAME}" --notes "自動ビルドされた署名済みAPKです。" --latest
+          else
+            gh release create "$TAG" FootballFixtureWidget.apk FootballFixtureWidget.apk.sha256 \
+              --target "$GITHUB_SHA" --title "MatchDay Widget v${VERSION_NAME}" \
+              --notes "自動ビルドされた署名済みAPKです。" --latest
+          fi

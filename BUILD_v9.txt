@@ -1,0 +1,6 @@
+Version: 9.0
+VersionCode: 1900000002
+Team search: FotMob /api/data/search/suggest + /api/searchData, SofaScore /api/v1/search/all
+Favorites: max 10, multi-provider IDs
+Launcher icons: 4 activity-alias choices
+Updater: GitHub Releases + 12h auto-check/download + Package Installer handoff

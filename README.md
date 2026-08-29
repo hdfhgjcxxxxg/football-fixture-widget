@@ -1,22 +1,15 @@
-# MatchDay Widget v7
+# MatchDay Widget v9
 
-Android home-screen football fixture widget.
+Android football fixture widget with a FotMob/SofaScore-style favorite-team picker.
 
-## v7 changes
+## v9 changes
+- Favorite search now queries both FotMob and SofaScore and merges team results.
+- Search results open in a modern bottom sheet with team crest, country/source, and instant add/remove.
+- Popular-team quick picks and league browsing remain available.
+- Favorites support up to 10 teams and preserve previous v7/v8 selections.
+- Four launcher icons are bundled and can be switched from Settings.
+- Automatic updates: GitHub Actions creates a signed release APK; the app checks every 12 hours, downloads a newer APK automatically, and notifies when it is ready to install.
+- Android requires the final install confirmation tap. Silent APK installation is not possible for a normal app.
 
-- No football-data.org API key required.
-- Automatically connects to FotMob public JSON data.
-- Dynamically loads the full FotMob league/competition directory instead of a small hard-coded list.
-- Global team-name search.
-- Up to 10 favourite teams, with a user-selectable first team.
-- Each favourite shows the next fixture in Japanese date + weekday + 24-hour time.
-- Live countdown using Android Chronometer (hours:minutes:seconds, including 24+ hours).
-- Exact FotMob match link comes directly from FotMob match data.
-- SofaScore event link is resolved from kickoff + home/away names.
-- Modern Material 3 settings UI with dynamic colors, cards, dropdowns and custom widget color.
-- Team crests in the widget (disk-cached).
-- Existing pre-v7 favourites are automatically migrated by team name from football-data.org IDs to FotMob IDs.
-
-## Data source note
-
-FotMob's web JSON endpoints do not require a user API key, but they are not a guaranteed public developer API and may change. The app caches the last successful widget state so a temporary upstream problem does not erase the widget.
+## Update channel
+`res/values/strings.xml` contains `__UPDATE_REPO__`. The included one-tap Termux script replaces it with the GitHub repository used for the build. In-app update checks work without credentials when that repository/release is publicly readable. A private repository cannot be queried anonymously by the installed app.

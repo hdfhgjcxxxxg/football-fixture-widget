@@ -10,8 +10,8 @@ android {
         applicationId = "com.example.footballfixturewidget"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1900000001
-        versionName = "8.0"
+        versionCode = 1900000002
+        versionName = "9.0"
     }
 
     val signingStoreFile = System.getenv("SIGNING_STORE_FILE")
@@ -48,6 +48,10 @@ android {
         }
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -57,4 +61,5 @@ android {
 dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.core:core-ktx:1.15.0")
 }

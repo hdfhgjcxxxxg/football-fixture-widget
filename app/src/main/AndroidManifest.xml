@@ -79,6 +79,30 @@
         </activity-alias>
 
         <activity
+            android:name=".TeamWidgetConfigActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".PlayerWidgetConfigActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".LeagueWidgetConfigActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
+        <activity
             android:name=".MatchLinkRouterActivity"
             android:exported="false"
             android:excludeFromRecents="true"
@@ -94,13 +118,38 @@
 
         <receiver
             android:name=".FixtureWidgetProvider"
-            android:exported="false">
+            android:exported="false"
+            android:label="@string/team_widget_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/fixture_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".PlayerWidgetProvider"
+            android:exported="false"
+            android:label="@string/player_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/player_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".LeagueWidgetProvider"
+            android:exported="false"
+            android:label="@string/league_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/league_widget_info" />
         </receiver>
 
         <receiver

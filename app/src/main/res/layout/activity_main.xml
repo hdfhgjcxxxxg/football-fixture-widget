@@ -236,6 +236,147 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:text="お気に入り選手"
+                    android:textAppearance="?attr/textAppearanceTitleLarge"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/players_count"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="0 / 10"
+                    android:textAppearance="?attr/textAppearanceBodyMedium"
+                    android:textColor="?attr/colorOnSurfaceVariant" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="FotMob / SofaScoreの選手検索から追加できます。選手ウィジェットには所属チームと次戦を表示します。"
+                    android:textAppearance="?attr/textAppearanceBodySmall"
+                    android:textColor="?attr/colorOnSurfaceVariant" />
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:hint="例: Bukayo Saka / Kylian Mbappé">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/player_search_input"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:imeOptions="actionSearch"
+                        android:inputType="text"
+                        android:maxLines="1" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/search_player_button"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="選手を検索" />
+
+                <LinearLayout
+                    android:id="@+id/favorite_players_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:orientation="vertical" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            app:cardCornerRadius="24dp"
+            app:cardElevation="0dp"
+            app:cardBackgroundColor="?attr/colorSurfaceContainerLow">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="お気に入りリーグ"
+                    android:textAppearance="?attr/textAppearanceTitleLarge"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/favorite_leagues_count"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="0 / 10"
+                    android:textAppearance="?attr/textAppearanceBodyMedium"
+                    android:textColor="?attr/colorOnSurfaceVariant" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="リーグをお気に入りにすると、リーグ専用ウィジェットで次に始まる試合を追えます。"
+                    android:textAppearance="?attr/textAppearanceBodySmall"
+                    android:textColor="?attr/colorOnSurfaceVariant" />
+
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:hint="リーグ・大会を選ぶ">
+
+                    <AutoCompleteTextView
+                        android:id="@+id/favorite_league_dropdown"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="none"
+                        android:maxLines="1" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/add_favorite_league_button"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="このリーグをお気に入りに追加" />
+
+                <LinearLayout
+                    android:id="@+id/favorite_leagues_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:orientation="vertical" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            app:cardCornerRadius="24dp"
+            app:cardElevation="0dp"
+            app:cardBackgroundColor="?attr/colorSurfaceContainerLow">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
                     android:text="タップ動作"
                     android:textAppearance="?attr/textAppearanceTitleLarge"
                     android:textColor="?attr/colorOnSurface"
@@ -245,7 +386,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="5dp"
-                    android:text="ウィジェットのチームを押したときに開くアプリ"
+                    android:text="ウィジェットの項目を押したときに開くアプリ"
                     android:textAppearance="?attr/textAppearanceBodyMedium"
                     android:textColor="?attr/colorOnSurfaceVariant" />
 
@@ -459,7 +600,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:gravity="center"
-            android:text="日付・曜日・24時間表記 + 秒単位カウントダウン\n最大10チーム • リーグ一覧は自動取得"
+            android:text="チーム・選手・リーグの3種類のウィジェット\n各ウィジェットごとに表示するお気に入りを個別選択"
             android:textAppearance="?attr/textAppearanceBodySmall"
             android:textColor="?attr/colorOnSurfaceVariant" />
 

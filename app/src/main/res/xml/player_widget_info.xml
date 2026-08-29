@@ -6,8 +6,8 @@
     android:minResizeHeight="110dp"
     android:initialLayout="@layout/widget_fixture"
     android:previewLayout="@layout/widget_fixture_preview"
-    android:configure="com.example.footballfixturewidget.TeamWidgetConfigActivity"
-    android:description="@string/team_widget_description"
+    android:configure="com.example.footballfixturewidget.PlayerWidgetConfigActivity"
+    android:description="@string/player_widget_description"
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="1800000"
     android:widgetCategory="home_screen" />

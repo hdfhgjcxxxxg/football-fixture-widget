@@ -1,0 +1,16 @@
+MatchDay Widget v10
+
+Main changes
+- Fixed league -> team picker so player entities are no longer treated as teams.
+- Added favorite players (up to 10) with FotMob + SofaScore player search.
+- Added favorite leagues/competitions (up to 10).
+- Added 3 independent Android widgets: Teams, Players, Leagues.
+- Every widget instance has its own configuration screen and can select a different subset of favorites.
+- Player widget shows the player's current club and that club's next fixture when team data is available.
+- League widget shows the next scheduled match in each selected league.
+- Team/player/league widgets keep 24-hour date/time and live countdown.
+- Kept direct FotMob/SofaScore match opening, widget colors, selectable app icons, and automatic GitHub Release updater.
+- Replaced launcher styles with the newer simplified icon set.
+
+Data notes
+FotMob/SofaScore endpoints used by this project are not official developer APIs and can change.

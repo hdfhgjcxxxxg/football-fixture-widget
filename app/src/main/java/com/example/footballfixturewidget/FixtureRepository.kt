@@ -273,20 +273,31 @@ object FixtureRepository {
             if (rows == null) return
             for (i in 0 until rows.length()) addTeam(rows.optJSONObject(i))
         }
-        val tableSections = root.optJSONArray("table")
-        if (tableSections != null) {
-            for (i in 0 until tableSections.length()) {
-                val data = tableSections.optJSONObject(i)?.optJSONObject("data") ?: continue
-                parseTableRows(data.optJSONObject("table")?.optJSONArray("all"))
-                val tables = data.optJSONArray("tables")
-                if (tables != null) {
-                    for (j in 0 until tables.length()) {
-                        parseTableRows(tables.optJSONObject(j)?.optJSONObject("table")?.optJSONArray("all"))
-                    }
+        fun parseTableSection(section: JSONObject?) {
+            if (section == null) return
+            val data = section.optJSONObject("data") ?: section
+            parseTableRows(data.optJSONObject("table")?.optJSONArray("all"))
+            parseTableRows(data.optJSONArray("all"))
+            val tables = data.optJSONArray("tables")
+            if (tables != null) {
+                for (j in 0 until tables.length()) {
+                    val table = tables.optJSONObject(j) ?: continue
+                    parseTableRows(table.optJSONObject("table")?.optJSONArray("all"))
+                    parseTableRows(table.optJSONArray("all"))
                 }
             }
         }
+        root.optJSONArray("table")?.let { sections ->
+            for (i in 0 until sections.length()) parseTableSection(sections.optJSONObject(i))
+        }
+        parseTableSection(root.optJSONObject("table"))
 
+        // IMPORTANT: only collect entities that are unambiguously teams.
+        // v9 walked every object with a teamId, which also matched player objects
+        // (e.g. Adam Smith, Adam Wharton) and caused league pickers to show players.
+        root.optJSONArray("teams")?.let { teams ->
+            for (i in 0 until teams.length()) addTeam(teams.optJSONObject(i))
+        }
         walkJson(root, maxDepth = 11) { obj ->
             val home = obj.optJSONObject("home")
             val away = obj.optJSONObject("away")
@@ -294,12 +305,17 @@ object FixtureRepository {
                 addTeam(home)
                 addTeam(away)
             }
-            val teamObj = obj.optJSONObject("team")
-            if (teamObj != null) addTeam(teamObj)
-            if (obj.has("teamId") && (obj.has("name") || obj.has("shortName"))) addTeam(obj)
+            val homeTeam = obj.optJSONObject("homeTeam")
+            val awayTeam = obj.optJSONObject("awayTeam")
+            if (homeTeam != null && awayTeam != null) {
+                addTeam(homeTeam)
+                addTeam(awayTeam)
+            }
         }
 
-        return found.values.sortedBy { it.name.lowercase(Locale.ROOT) }
+        return found.values
+            .filterNot { it.name.matches(Regex(".*\\b(Referee|Coach|Manager)\\b.*", RegexOption.IGNORE_CASE)) }
+            .sortedBy { it.name.lowercase(Locale.ROOT) }
     }
 
     /**
@@ -352,8 +368,11 @@ object FixtureRepository {
                         return
                     }
                     val sport = obj.optString("sport").lowercase(Locale.ROOT)
-                    val looksLikeTeam = forcedTeam || type == "team" || type == "club" || obj.has("teamId") || obj.has("teamName")
-                    if (!looksLikeTeam || (sport.isNotBlank() && sport != "football" && sport != "soccer")) return
+                    val entityType = obj.optString("entityType").lowercase(Locale.ROOT)
+                    // Do not infer "team" from teamId/teamName: player search results also contain those fields.
+                    val looksLikeTeam = forcedTeam || type == "team" || type == "club" || entityType == "team" || entityType == "club"
+                    if (!looksLikeTeam || type == "player" || entityType == "player" ||
+                        (sport.isNotBlank() && sport != "football" && sport != "soccer")) return
                     val id = firstPositiveInt(obj, "id", "teamId")
                     val name = obj.optString("name")
                         .ifBlank { obj.optString("title") }
@@ -402,10 +421,13 @@ object FixtureRepository {
             val wrapper = results.optJSONObject(i) ?: continue
             val type = wrapper.optString("type").lowercase(Locale.ROOT)
             val entity = wrapper.optJSONObject("entity") ?: wrapper
+            val entityType = entity.optString("type").lowercase(Locale.ROOT)
+            val effectiveType = type.ifBlank { entityType }
             val sportName = entity.optJSONObject("sport")?.optString("name").orEmpty()
+                .ifBlank { entity.optJSONObject("sport")?.optString("slug").orEmpty() }
                 .ifBlank { entity.optString("sport") }
                 .lowercase(Locale.ROOT)
-            if (type.isNotBlank() && type != "team") continue
+            if (effectiveType != "team") continue
             if (sportName.isNotBlank() && sportName != "football" && sportName != "soccer") continue
             val id = firstPositiveInt(entity, "id", "teamId")
             val name = entity.optString("name").ifBlank { entity.optString("shortName") }
@@ -415,6 +437,8 @@ object FixtureRepository {
         }
         return found.values.toList()
     }
+
+    fun fetchNextFixtureForTeam(team: FavoriteTeam): NextFixture? = fetchNextFixture(team)
 
     private fun fetchNextFixture(team: FavoriteTeam): NextFixture? {
         var firstError: Throwable? = null

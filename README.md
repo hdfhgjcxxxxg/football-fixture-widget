@@ -1,15 +1,27 @@
-# MatchDay Widget v9
+# MatchDay Widget v10
 
-Android football fixture widget with a FotMob/SofaScore-style favorite-team picker.
+Android football fixture widget with no API-key field.
 
-## v9 changes
-- Favorite search now queries both FotMob and SofaScore and merges team results.
-- Search results open in a modern bottom sheet with team crest, country/source, and instant add/remove.
-- Popular-team quick picks and league browsing remain available.
-- Favorites support up to 10 teams and preserve previous v7/v8 selections.
-- Four launcher icons are bundled and can be switched from Settings.
-- Automatic updates: GitHub Actions creates a signed release APK; the app checks every 12 hours, downloads a newer APK automatically, and notifies when it is ready to install.
-- Android requires the final install confirmation tap. Silent APK installation is not possible for a normal app.
+## Favorites
+- Teams: up to 10
+- Players: up to 10
+- Leagues/competitions: up to 10
 
-## Update channel
-`res/values/strings.xml` contains `__UPDATE_REPO__`. The included one-tap Termux script replaces it with the GitHub repository used for the build. In-app update checks work without credentials when that repository/release is publicly readable. A private repository cannot be queried anonymously by the installed app.
+The league-to-team picker now parses only explicit standings/team/match-team structures, so player names are not accepted as teams.
+
+## Three separate widgets
+Android's widget picker shows:
+- MatchDay • Teams
+- MatchDay • Players
+- MatchDay • Leagues
+
+When adding any widget, a configuration screen opens. Select the exact favorites for that widget instance. You can add multiple widgets of the same type and give each a different selection. Tap the widget title later to edit its selection.
+
+## Player widget
+Shows the favorite player, current club (when the provider supplies it), and the club's next fixture with 24-hour date/time + countdown.
+
+## League widget
+Shows the selected league and the next scheduled match in that competition.
+
+## Updates
+The included GitHub Actions workflow builds a fixed-signing release APK and publishes it as the latest GitHub Release. The installed app can check for releases every 12 hours and download a newer APK. Android still requires the final install/update confirmation tap.

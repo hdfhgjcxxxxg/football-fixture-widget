@@ -39,6 +39,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var loadLeagueTeamsButton: MaterialButton
     private lateinit var teamSearchInput: TextInputEditText
     private lateinit var searchTeamButton: MaterialButton
+    private lateinit var playersCount: TextView
+    private lateinit var playerSearchInput: TextInputEditText
+    private lateinit var searchPlayerButton: MaterialButton
+    private lateinit var favoritePlayersContainer: LinearLayout
+    private lateinit var favoriteLeaguesCount: TextView
+    private lateinit var favoriteLeagueDropdown: AutoCompleteTextView
+    private lateinit var addFavoriteLeagueButton: MaterialButton
+    private lateinit var favoriteLeaguesContainer: LinearLayout
     private lateinit var tapTargetDropdown: AutoCompleteTextView
     private lateinit var colorPreview: View
     private lateinit var colorPresets: LinearLayout
@@ -57,6 +65,7 @@ class MainActivity : AppCompatActivity() {
     private var selectedColor = FixtureRepository.DEFAULT_WIDGET_COLOR
     private var leagueOptions: List<LeagueInfo> = emptyList()
     private var selectedLeague: LeagueInfo? = null
+    private var selectedFavoriteLeague: LeagueInfo? = null
 
     private val tapLabels = listOf(
         "FotMobのその試合を開く",
@@ -83,6 +92,8 @@ class MainActivity : AppCompatActivity() {
         setupUpdateControls()
         setupActions()
         refreshFavoritesUi()
+        refreshPlayerFavoritesUi()
+        refreshLeagueFavoritesUi()
         migrateAndLoadLeagues()
         requestNotificationPermissionIfNeeded()
     }
@@ -98,6 +109,14 @@ class MainActivity : AppCompatActivity() {
         loadLeagueTeamsButton = findViewById(R.id.load_league_teams_button)
         teamSearchInput = findViewById(R.id.team_search_input)
         searchTeamButton = findViewById(R.id.search_team_button)
+        playersCount = findViewById(R.id.players_count)
+        playerSearchInput = findViewById(R.id.player_search_input)
+        searchPlayerButton = findViewById(R.id.search_player_button)
+        favoritePlayersContainer = findViewById(R.id.favorite_players_container)
+        favoriteLeaguesCount = findViewById(R.id.favorite_leagues_count)
+        favoriteLeagueDropdown = findViewById(R.id.favorite_league_dropdown)
+        addFavoriteLeagueButton = findViewById(R.id.add_favorite_league_button)
+        favoriteLeaguesContainer = findViewById(R.id.favorite_leagues_container)
         tapTargetDropdown = findViewById(R.id.tap_target_dropdown)
         colorPreview = findViewById(R.id.color_preview)
         colorPresets = findViewById(R.id.color_presets)
@@ -124,10 +143,34 @@ class MainActivity : AppCompatActivity() {
             if (league == null) toast("リーグ・大会を選んでください") else loadTeamsForLeague(league)
         }
 
+        favoriteLeagueDropdown.setOnItemClickListener { parent, _, position, _ ->
+            val label = parent.getItemAtPosition(position)?.toString().orEmpty()
+            selectedFavoriteLeague = leagueOptions.firstOrNull { it.label == label }
+        }
+        addFavoriteLeagueButton.setOnClickListener {
+            val league = selectedFavoriteLeague
+            if (league == null) {
+                toast("お気に入りにするリーグを選んでください")
+            } else if (!FavoriteEntityRepository.addFavoriteLeague(this, league)) {
+                toast("お気に入りリーグは最大${FavoriteEntityRepository.MAX_LEAGUES}件です")
+            } else {
+                refreshLeagueFavoritesUi()
+                toast("${league.name} をお気に入りに追加しました")
+            }
+        }
+
         searchTeamButton.setOnClickListener { searchTeams() }
         teamSearchInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
                 searchTeams()
+                true
+            } else false
+        }
+
+        searchPlayerButton.setOnClickListener { searchPlayers() }
+        playerSearchInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                searchPlayers()
                 true
             } else false
         }
@@ -306,8 +349,12 @@ class MainActivity : AppCompatActivity() {
     private fun applyLeagueDirectory(leagues: List<LeagueInfo>, showToast: Boolean) {
         leagueOptions = leagues
         selectedLeague = null
-        leagueDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, leagues.map { it.label }))
+        selectedFavoriteLeague = null
+        val labels = leagues.map { it.label }
+        leagueDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, labels))
         leagueDropdown.setText("", false)
+        favoriteLeagueDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, labels))
+        favoriteLeagueDropdown.setText("", false)
         apiBadge.text = "接続済み"
         apiStatus.text = "FotMob + SofaScore検索 • ${leagues.size}リーグ/大会"
         if (showToast) toast("接続OK：${leagues.size}大会を取得しました")
@@ -349,6 +396,123 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }.start()
+    }
+
+    private fun searchPlayers() {
+        val query = playerSearchInput.text?.toString()?.trim().orEmpty()
+        if (query.length < 2) {
+            toast("選手名を2文字以上入力してください")
+            return
+        }
+        setBusy(true)
+        apiStatus.text = "FotMob / SofaScoreで選手を検索中…"
+        Thread {
+            val result = runCatching { FavoriteEntityRepository.searchPlayers(query) }
+            runOnUiThread {
+                setBusy(false)
+                result.onSuccess { players ->
+                    apiStatus.text = "選手検索OK • FotMob + SofaScore"
+                    if (players.isEmpty()) toast("選手が見つかりませんでした。英語表記でも試してください")
+                    else showPlayerPicker("「$query」の選手検索", players)
+                }.onFailure {
+                    apiStatus.text = "選手検索失敗 • ${it.message ?: "通信エラー"}"
+                    toast("選手検索失敗: ${it.message ?: "通信エラー"}")
+                }
+            }
+        }.start()
+    }
+
+    private fun showPlayerPicker(title: String, candidates: List<FavoritePlayer>) {
+        val dialog = BottomSheetDialog(this)
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(24))
+        }
+        root.addView(TextView(this).apply {
+            text = title
+            textSize = 21f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurface))
+        })
+        root.addView(TextView(this).apply {
+            text = "お気に入り選手は最大${FavoriteEntityRepository.MAX_PLAYERS}人 • タップですぐ追加/解除"
+            textSize = 13f
+            setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+            setPadding(0, dp(4), 0, dp(12))
+        })
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        candidates.take(50).forEach { player -> list.addView(createPlayerPickerRow(player)) }
+        val scroll = ScrollView(this).apply { addView(list) }
+        root.addView(scroll, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            (resources.displayMetrics.heightPixels * 0.62f).toInt()
+        ))
+        dialog.setContentView(root)
+        dialog.show()
+    }
+
+    private fun createPlayerPickerRow(player: FavoritePlayer): View {
+        val card = MaterialCardView(this).apply {
+            radius = dp(18).toFloat()
+            cardElevation = 0f
+            setCardBackgroundColor(resolveThemeColor(com.google.android.material.R.attr.colorSurfaceContainerHigh))
+        }
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(10), dp(10), dp(10))
+        }
+        val image = ImageView(this).apply {
+            setImageResource(R.drawable.ic_launcher)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+        }
+        row.addView(image, LinearLayout.LayoutParams(dp(46), dp(46)))
+        val textBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), 0, dp(8), 0)
+        }
+        textBox.addView(TextView(this).apply {
+            text = player.name
+            textSize = 16f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurface))
+        })
+        textBox.addView(TextView(this).apply {
+            text = listOf(player.teamName, player.position, player.sourceLabel).filter { it.isNotBlank() }.joinToString(" • ")
+            textSize = 12f
+            setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+        })
+        row.addView(textBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+        val button = MaterialButton(this)
+        fun currentSaved(): FavoritePlayer? = FavoriteEntityRepository.getFavoritePlayers(this).firstOrNull {
+            it.id == player.id || (it.name.equals(player.name, true) && it.teamName.equals(player.teamName, true))
+        }
+        fun renderButton() {
+            button.text = if (currentSaved() != null) "✓ 追加済み" else "＋ 追加"
+        }
+        renderButton()
+        button.setOnClickListener {
+            val saved = currentSaved()
+            if (saved != null) {
+                FavoriteEntityRepository.removeFavoritePlayer(this, saved.id)
+            } else if (!FavoriteEntityRepository.addFavoritePlayer(this, player)) {
+                toast("最大${FavoriteEntityRepository.MAX_PLAYERS}人までです")
+            }
+            renderButton()
+            refreshPlayerFavoritesUi()
+        }
+        row.addView(button, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)))
+        card.addView(row)
+        Thread {
+            val bitmap = EntityImageLoader.loadPlayer(this, player)
+            if (bitmap != null) runOnUiThread { image.setImageBitmap(bitmap) }
+        }.start()
+        return card.apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dp(8)
+            }
+        }
     }
 
     /** FotMob/SofaScore風: 検索結果から即追加・即解除。確定ボタンは不要。 */
@@ -533,13 +697,145 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun refreshPlayerFavoritesUi() {
+        val players = FavoriteEntityRepository.getFavoritePlayers(this)
+        playersCount.text = "${players.size} / ${FavoriteEntityRepository.MAX_PLAYERS}"
+        favoritePlayersContainer.removeAllViews()
+        if (players.isEmpty()) {
+            favoritePlayersContainer.addView(TextView(this).apply {
+                text = "まだ選手がありません。上の検索から追加してください。"
+                setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+                textSize = 14f
+                setPadding(dp(4), dp(10), dp(4), dp(6))
+            })
+            return
+        }
+        players.forEach { player ->
+            val card = MaterialCardView(this).apply {
+                radius = dp(18).toFloat()
+                cardElevation = 0f
+                setCardBackgroundColor(resolveThemeColor(com.google.android.material.R.attr.colorSurfaceContainerHighest))
+            }
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(14), dp(12), dp(10), dp(12))
+            }
+            val image = ImageView(this).apply {
+                setImageResource(R.drawable.ic_launcher)
+                scaleType = ImageView.ScaleType.CENTER_CROP
+            }
+            row.addView(image, LinearLayout.LayoutParams(dp(44), dp(44)))
+            val box = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), 0, dp(8), 0)
+            }
+            box.addView(TextView(this).apply {
+                text = player.name
+                textSize = 16f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurface))
+            })
+            box.addView(TextView(this).apply {
+                text = listOf(player.teamName, player.position, player.sourceLabel).filter { it.isNotBlank() }.joinToString(" • ")
+                textSize = 12f
+                setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+            })
+            row.addView(box, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(MaterialButton(this).apply {
+                text = "削除"
+                textSize = 12f
+                setOnClickListener {
+                    FavoriteEntityRepository.removeFavoritePlayer(this@MainActivity, player.id)
+                    refreshPlayerFavoritesUi()
+                }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(42)))
+            card.addView(row)
+            favoritePlayersContainer.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(8)
+            })
+            Thread {
+                val bitmap = EntityImageLoader.loadPlayer(this, player)
+                if (bitmap != null) runOnUiThread { image.setImageBitmap(bitmap) }
+            }.start()
+        }
+    }
+
+    private fun refreshLeagueFavoritesUi() {
+        val leagues = FavoriteEntityRepository.getFavoriteLeagues(this)
+        favoriteLeaguesCount.text = "${leagues.size} / ${FavoriteEntityRepository.MAX_LEAGUES}"
+        favoriteLeaguesContainer.removeAllViews()
+        if (leagues.isEmpty()) {
+            favoriteLeaguesContainer.addView(TextView(this).apply {
+                text = "まだリーグがありません。リーグ・大会を選んで追加してください。"
+                setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+                textSize = 14f
+                setPadding(dp(4), dp(10), dp(4), dp(6))
+            })
+            return
+        }
+        leagues.forEach { league ->
+            val card = MaterialCardView(this).apply {
+                radius = dp(18).toFloat()
+                cardElevation = 0f
+                setCardBackgroundColor(resolveThemeColor(com.google.android.material.R.attr.colorSurfaceContainerHighest))
+            }
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(14), dp(12), dp(10), dp(12))
+            }
+            val image = ImageView(this).apply {
+                setImageResource(R.drawable.ic_launcher)
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+            }
+            row.addView(image, LinearLayout.LayoutParams(dp(44), dp(44)))
+            val box = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), 0, dp(8), 0)
+            }
+            box.addView(TextView(this).apply {
+                text = league.name
+                textSize = 16f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurface))
+            })
+            box.addView(TextView(this).apply {
+                text = league.country.ifBlank { "International" }
+                textSize = 12f
+                setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+            })
+            row.addView(box, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(MaterialButton(this).apply {
+                text = "削除"
+                textSize = 12f
+                setOnClickListener {
+                    FavoriteEntityRepository.removeFavoriteLeague(this@MainActivity, league.id)
+                    refreshLeagueFavoritesUi()
+                }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(42)))
+            card.addView(row)
+            favoriteLeaguesContainer.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(8)
+            })
+            Thread {
+                val bitmap = EntityImageLoader.loadLeague(this, league)
+                if (bitmap != null) runOnUiThread { image.setImageBitmap(bitmap) }
+            }.start()
+        }
+    }
+
     private fun saveAndRefresh() {
         val target = tapTargetForLabel(tapTargetDropdown.text?.toString().orEmpty())
         FixtureRepository.saveTapTarget(this, target)
         FixtureRepository.saveWidgetColor(this, selectedColor)
         FixtureWidgetProvider.renderAll(this, statusOverride = "更新中…")
+        PlayerWidgetProvider.renderAll(this, statusOverride = "更新中…")
+        LeagueWidgetProvider.renderAll(this, statusOverride = "更新中…")
         sendBroadcast(Intent(this, FixtureWidgetProvider::class.java).apply { action = FixtureWidgetProvider.ACTION_REFRESH })
-        toast("保存しました。試合日程を更新しています")
+        sendBroadcast(Intent(this, PlayerWidgetProvider::class.java).apply { action = PlayerWidgetProvider.ACTION_REFRESH })
+        sendBroadcast(Intent(this, LeagueWidgetProvider::class.java).apply { action = LeagueWidgetProvider.ACTION_REFRESH })
+        toast("保存しました。チーム・選手・リーグの日程を更新しています")
     }
 
     private fun labelForTapTarget(value: String): String = when (value) {
@@ -570,6 +866,8 @@ class MainActivity : AppCompatActivity() {
         testConnectionButton.isEnabled = !busy
         loadLeagueTeamsButton.isEnabled = !busy
         searchTeamButton.isEnabled = !busy
+        searchPlayerButton.isEnabled = !busy
+        addFavoriteLeagueButton.isEnabled = !busy
         saveButton.isEnabled = !busy
     }
 

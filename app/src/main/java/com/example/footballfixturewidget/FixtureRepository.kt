@@ -213,7 +213,7 @@ object FixtureRepository {
 
     fun fetchLeagueDirectory(): List<LeagueInfo> {
         val root = requestObjectWithFallback(
-            // Official SofaScore API. v11.8 sends these requests through Cronet
+            // Official SofaScore API. v11.9 sends these requests through Android HttpEngine on Android 14+
             // instead of HttpURLConnection to avoid Java/Android TLS fingerprint blocks.
             "https://api.sofascore.com/api/v1/sport/football/unique-tournaments",
             "https://www.sofascore.com/api/v1/sport/football/unique-tournaments",

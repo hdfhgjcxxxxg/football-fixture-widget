@@ -1,35 +1,21 @@
 package com.example.footballfixturewidget
 
-import com.google.android.gms.net.CronetProviderInstaller
-import com.google.android.gms.tasks.Tasks
-import org.chromium.net.CronetEngine
-import org.chromium.net.CronetException
-import org.chromium.net.UrlRequest
-import org.chromium.net.UrlResponseInfo
+import android.os.Build
 import org.json.JSONTokener
-import java.io.ByteArrayOutputStream
-import java.nio.ByteBuffer
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicReference
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
- * SofaScore transport using Chromium's network stack (Cronet) instead of
- * HttpURLConnection. SofaScore currently returns HTTP 403 to some Android/Java
- * TLS fingerprints even when browser-like headers are added. Cronet uses the
- * Chromium network stack shipped by Google Play services and therefore follows
- * the same HTTP/2/TLS path as Chrome much more closely.
+ * SofaScore transport.
+ *
+ * Android 14+ uses the platform Chromium HttpEngine, avoiding the Google Play
+ * Services Cronet dependency/manifest merge entirely. Older Android versions
+ * fall back to HttpURLConnection.
  */
 object SofaScoreHttp {
     private const val API_BASE = "https://api.sofascore.com/api/v1"
     private const val WWW_BASE = "https://www.sofascore.com/api/v1"
     private const val UA = "Mozilla/5.0 (Linux; Android 16; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36"
-
-    private val callbackExecutor = Executors.newCachedThreadPool()
-    @Volatile private var cronet: CronetEngine? = null
-    private val engineLock = Any()
 
     fun getAny(urlOrPath: String): Any {
         var last: Throwable? = null
@@ -54,98 +40,58 @@ object SofaScoreHttp {
             input.startsWith("http://") || input.startsWith("https://") -> return listOf(input)
             else -> "/$input"
         }
-        // Official API first. The www path is retained only as a compatibility
-        // fallback; unlike v11.7 we do not use unverified third-party mirrors.
         return listOf("$API_BASE$path", "$WWW_BASE$path").distinct()
     }
 
     private fun execute(url: String): String {
-        val engine = engine()
-        val done = CountDownLatch(1)
-        val output = ByteArrayOutputStream()
-        val status = AtomicInteger(-1)
-        val failure = AtomicReference<Throwable?>(null)
-
-        val callback = object : UrlRequest.Callback() {
-            override fun onRedirectReceived(request: UrlRequest, info: UrlResponseInfo, newLocationUrl: String) {
-                request.followRedirect()
-            }
-
-            override fun onResponseStarted(request: UrlRequest, info: UrlResponseInfo) {
-                status.set(info.httpStatusCode)
-                request.read(ByteBuffer.allocateDirect(64 * 1024))
-            }
-
-            override fun onReadCompleted(request: UrlRequest, info: UrlResponseInfo, byteBuffer: ByteBuffer) {
-                byteBuffer.flip()
-                val bytes = ByteArray(byteBuffer.remaining())
-                byteBuffer.get(bytes)
-                output.write(bytes)
-                byteBuffer.clear()
-                request.read(byteBuffer)
-            }
-
-            override fun onSucceeded(request: UrlRequest, info: UrlResponseInfo) {
-                done.countDown()
-            }
-
-            override fun onFailed(request: UrlRequest, info: UrlResponseInfo?, error: CronetException) {
-                failure.set(error)
-                done.countDown()
-            }
-
-            override fun onCanceled(request: UrlRequest, info: UrlResponseInfo?) {
-                failure.set(IllegalStateException("通信がキャンセルされました"))
-                done.countDown()
+        if (Build.VERSION.SDK_INT >= 34) {
+            return try {
+                PlatformHttpEngineClient.get(MatchDayApplication.appContext, url)
+            } catch (t: Throwable) {
+                // Keep a conventional transport fallback in case the platform
+                // provider is unavailable on a particular Android build.
+                executeLegacy(url, t)
             }
         }
-
-        val request = engine.newUrlRequestBuilder(url, callback, callbackExecutor)
-            .addHeader("Accept", "application/json,text/plain,*/*")
-            .addHeader("Accept-Language", "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7")
-            .addHeader("Referer", "https://www.sofascore.com/")
-            .addHeader("Origin", "https://www.sofascore.com")
-            .addHeader("X-Requested-With", "XMLHttpRequest")
-            .addHeader("Cache-Control", "no-cache")
-            .build()
-        request.start()
-
-        if (!done.await(15, TimeUnit.SECONDS)) {
-            request.cancel()
-            throw IllegalStateException("${hostLabel(url)}: タイムアウト")
-        }
-        failure.get()?.let { throw it }
-        val code = status.get()
-        val body = output.toString(Charsets.UTF_8.name())
-        if (code !in 200..299) {
-            throw IllegalStateException("${hostLabel(url)}: HTTP $code")
-        }
-        return body
+        return executeLegacy(url, null)
     }
 
-    private fun engine(): CronetEngine {
-        cronet?.let { return it }
-        synchronized(engineLock) {
-            cronet?.let { return it }
-            val context = MatchDayApplication.appContext
-            try {
-                Tasks.await(CronetProviderInstaller.installProvider(context), 12, TimeUnit.SECONDS)
-            } catch (t: Throwable) {
-                throw IllegalStateException("Cronetを初期化できません。Google Play開発者サービスを更新してください。", t)
+    private fun executeLegacy(url: String, previous: Throwable?): String {
+        var conn: HttpURLConnection? = null
+        try {
+            conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 12_000
+                readTimeout = 15_000
+                instanceFollowRedirects = true
+                useCaches = false
+                setRequestProperty("User-Agent", UA)
+                setRequestProperty("Accept", "application/json,text/plain,*/*")
+                setRequestProperty("Accept-Language", "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7")
+                setRequestProperty("Referer", "https://www.sofascore.com/")
+                setRequestProperty("Origin", "https://www.sofascore.com")
+                setRequestProperty("X-Requested-With", "XMLHttpRequest")
+                setRequestProperty("Sec-Fetch-Dest", "empty")
+                setRequestProperty("Sec-Fetch-Mode", "cors")
+                setRequestProperty("Sec-Fetch-Site", "same-site")
+                setRequestProperty("Cache-Control", "no-cache")
             }
-            return CronetEngine.Builder(context)
-                .setUserAgent(UA)
-                .enableHttp2(true)
-                .enableQuic(true)
-                .enableBrotli(true)
-                .build()
-                .also { cronet = it }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val body = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+            if (code !in 200..299) {
+                val prefix = previous?.message?.let { "${it}; " }.orEmpty()
+                throw IllegalStateException("${prefix}${hostLabel(url)}: HTTP $code")
+            }
+            return body
+        } finally {
+            conn?.disconnect()
         }
     }
 
     private fun hostLabel(url: String): String = when {
-        url.contains("api.sofascore.com") -> "api.sofascore.com(Cronet)"
-        url.contains("www.sofascore.com") -> "www.sofascore.com(Cronet)"
+        url.contains("api.sofascore.com") -> "api.sofascore.com"
+        url.contains("www.sofascore.com") -> "www.sofascore.com"
         else -> url
     }
 }

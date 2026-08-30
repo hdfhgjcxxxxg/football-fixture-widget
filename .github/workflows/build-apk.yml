@@ -53,6 +53,22 @@ jobs:
           SIGNING_KEY_PASSWORD: ${{ secrets.FFW_KEY_PASSWORD }}
         run: gradle :app:assembleRelease --no-daemon --stacktrace
 
+      - name: Print failure diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          echo "=== Android build diagnostics ==="
+          if [ -f app/build/outputs/logs/manifest-merger-release-report.txt ]; then
+            echo "=== manifest-merger-release-report.txt ==="
+            cat app/build/outputs/logs/manifest-merger-release-report.txt
+          fi
+          find app/build -type f \
+            \( -iname '*manifest*report*.txt' -o -iname '*manifest*log*.txt' \) \
+            -print 2>/dev/null | while read -r f; do
+              echo "=== $f ==="
+              cat "$f" || true
+            done
+
       - name: Verify APK
         shell: bash
         run: |

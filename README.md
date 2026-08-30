@@ -1,4 +1,4 @@
-# MatchDay Widget v11.8
+# MatchDay Widget v11.9
 
 - SofaScoreを中心に試合・リーグ・チーム・選手データを取得
 - APKのビルドと署名検証が成功した場合だけGitHub Releaseへ自動公開
@@ -17,8 +17,8 @@ v11.2: nullable Int build fix + automatic share sheet on build failure
 - Keeps public GitHub Release auto-publish and fixed signing.
 
 
-## v11.8 SofaScore 403 fix
+## v11.9 SofaScore 403 fix
 - Removes the unverified `api.sofascore.app` mirror.
-- Uses the official SofaScore API with Google Play services Cronet (Chromium network stack) instead of `HttpURLConnection`.
+- Uses the official SofaScore API with Android's platform HttpEngine (Chromium network stack) on Android 14+, with `HttpURLConnection` fallback on older versions.
 - Retries the SofaScore www API path only as a compatibility fallback.
 - Keeps public GitHub Release auto-publish, fixed signing, and automatic error-log sharing.

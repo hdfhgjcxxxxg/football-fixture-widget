@@ -30,3 +30,6 @@ v11.2: nullable Int build fix + automatic share sheet on build failure
 - SofaScore/network initialization is deferred until the user taps 「接続を確認」.
 - Automatic update checks no longer perform network I/O during Activity startup; only the periodic alarm is scheduled.
 - MainActivity startup steps are guarded so an initialization error is shown as an error screen and stored as a runtime crash report.
+
+## v11.11 crash fix
+Android 16 platform HttpEngine internally monitors connectivity. v11.11 declares `android.permission.ACCESS_NETWORK_STATE`, fixing the startup/runtime `SecurityException` raised from `ConnectivityService` during `CronetInit`.

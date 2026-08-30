@@ -164,8 +164,8 @@ object UpdateManager {
             context, 78, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val first = System.currentTimeMillis() + 15 * 60 * 1000L
-        alarm.setInexactRepeating(AlarmManager.RTC_WAKEUP, first, 12 * 60 * 60 * 1000L, pi)
+        val first = System.currentTimeMillis() + 5 * 60 * 1000L
+        alarm.setInexactRepeating(AlarmManager.RTC_WAKEUP, first, 6 * 60 * 60 * 1000L, pi)
     }
 
     fun cancelSchedule(context: Context) {

@@ -557,13 +557,13 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(12), dp(10), dp(10), dp(10))
         }
         val image = ImageView(this).apply {
-            setImageResource(R.drawable.ic_launcher)
-            scaleType = ImageView.ScaleType.CENTER_CROP
+            setImageResource(R.drawable.ic_player_placeholder)
+            scaleType = ImageView.ScaleType.FIT_CENTER
         }
-        row.addView(image, LinearLayout.LayoutParams(dp(46), dp(46)))
+        row.addView(image, LinearLayout.LayoutParams(dp(58), dp(58)))
         val textBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), 0, dp(8), 0)
+            setPadding(dp(14), 0, dp(8), 0)
         }
         textBox.addView(TextView(this).apply {
             text = player.name
@@ -816,13 +816,13 @@ class MainActivity : AppCompatActivity() {
                 setPadding(dp(14), dp(12), dp(10), dp(12))
             }
             val image = ImageView(this).apply {
-                setImageResource(R.drawable.ic_launcher)
-                scaleType = ImageView.ScaleType.CENTER_CROP
+                setImageResource(R.drawable.ic_player_placeholder)
+                scaleType = ImageView.ScaleType.FIT_CENTER
             }
-            row.addView(image, LinearLayout.LayoutParams(dp(44), dp(44)))
+            row.addView(image, LinearLayout.LayoutParams(dp(58), dp(58)))
             val box = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dp(12), 0, dp(8), 0)
+                setPadding(dp(14), 0, dp(8), 0)
             }
             box.addView(TextView(this).apply {
                 text = player.name

@@ -46,6 +46,14 @@ object TeamLogoLoader {
             readTimeout = 5000
             instanceFollowRedirects = true
             setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/140 Mobile Safari/537.36")
+            if (url.contains("sofascore", true)) {
+                setRequestProperty("X-Requested-With", "XMLHttpRequest")
+                setRequestProperty("Cache-Control", "no-cache")
+                setRequestProperty("Pragma", "no-cache")
+                setRequestProperty("Sec-Fetch-Site", "same-origin")
+                setRequestProperty("Sec-Fetch-Mode", "cors")
+                setRequestProperty("Sec-Fetch-Dest", "empty")
+            }
             setRequestProperty("Referer", "https://www.sofascore.com/")
         }
         try {

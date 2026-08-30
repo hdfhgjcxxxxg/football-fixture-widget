@@ -187,6 +187,14 @@ object FixtureRepository {
                 "User-Agent",
                 "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36"
             )
+            if (isSofa) {
+                setRequestProperty("X-Requested-With", "XMLHttpRequest")
+                setRequestProperty("Cache-Control", "no-cache")
+                setRequestProperty("Pragma", "no-cache")
+                setRequestProperty("Sec-Fetch-Site", "same-origin")
+                setRequestProperty("Sec-Fetch-Mode", "cors")
+                setRequestProperty("Sec-Fetch-Dest", "empty")
+            }
         }
         try {
             val code = connection.responseCode
@@ -215,6 +223,8 @@ object FixtureRepository {
 
     fun fetchLeagueDirectory(): List<LeagueInfo> {
         val root = requestObjectWithFallback(
+            // The www host often passes SofaScore's browser/XHR challenge more reliably on mobile networks.
+            "https://www.sofascore.com/api/v1/sport/football/unique-tournaments",
             // Current SofaScore football tournament directory.
             "https://api.sofascore.com/api/v1/sport/football/unique-tournaments",
             // Legacy configuration routes are kept only as fallbacks because

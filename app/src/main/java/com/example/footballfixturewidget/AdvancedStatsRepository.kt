@@ -482,23 +482,42 @@ object AdvancedStatsRepository {
     private fun requestObject(path: String): JSONObject = requestObjectAbsolute("https://api.sofascore.com/api/v1$path")
 
     private fun requestObjectAbsolute(url: String): JSONObject {
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = 7000
-            readTimeout = 11000
-            instanceFollowRedirects = true
-            setRequestProperty("Accept", "application/json,text/plain,*/*")
-            setRequestProperty("Accept-Language", "ja-JP,ja;q=0.9,en;q=0.8")
-            setRequestProperty("Referer", "https://www.sofascore.com/")
-            setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/140 Mobile Safari/537.36")
+        val candidates = buildList {
+            if (url.contains("api.sofascore.com", true)) {
+                add(url.replace("https://api.sofascore.com", "https://www.sofascore.com"))
+            }
+            add(url)
+        }.distinct()
+        var last: Throwable? = null
+        for (candidate in candidates) {
+            val conn = (URL(candidate).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 7000
+                readTimeout = 11000
+                instanceFollowRedirects = true
+                setRequestProperty("Accept", "application/json,text/plain,*/*")
+                setRequestProperty("Accept-Language", "ja-JP,ja;q=0.9,en;q=0.8")
+                setRequestProperty("Referer", "https://www.sofascore.com/")
+                setRequestProperty("Origin", "https://www.sofascore.com")
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/140 Mobile Safari/537.36")
+                setRequestProperty("X-Requested-With", "XMLHttpRequest")
+                setRequestProperty("Cache-Control", "no-cache")
+                setRequestProperty("Pragma", "no-cache")
+                setRequestProperty("Sec-Fetch-Site", "same-origin")
+                setRequestProperty("Sec-Fetch-Mode", "cors")
+                setRequestProperty("Sec-Fetch-Dest", "empty")
+            }
+            try {
+                val code = conn.responseCode
+                val body = (if (code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                if (code !in 200..299) throw IllegalStateException("HTTP $code")
+                val value = JSONTokener(body).nextValue()
+                return value as? JSONObject ?: throw IllegalStateException("JSON object expected")
+            } catch (t: Throwable) {
+                last = t
+            } finally { conn.disconnect() }
         }
-        try {
-            val code = conn.responseCode
-            val body = (if (code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (code !in 200..299) throw IllegalStateException("HTTP $code")
-            val value = JSONTokener(body).nextValue()
-            return value as? JSONObject ?: throw IllegalStateException("JSON object expected")
-        } finally { conn.disconnect() }
+        throw last ?: IllegalStateException("SofaScoreデータを取得できませんでした")
     }
 
     private fun saveTeamExtras(context: Context, data: Map<Int, TeamExtra>) {

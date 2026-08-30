@@ -9,3 +9,9 @@
 
 v11.4: SofaScore tournament API 404 fix
 v11.2: nullable Int build fix + automatic share sheet on build failure
+
+## v11.6 SofaScore HTTP 403 fix
+- Adds `X-Requested-With: XMLHttpRequest` and browser/XHR-style request headers for SofaScore requests.
+- Retries SofaScore via `www.sofascore.com/api/v1` when the API host is challenged.
+- Prefers the www-host tournament directory on mobile networks.
+- Keeps public GitHub Release auto-publish and fixed signing.

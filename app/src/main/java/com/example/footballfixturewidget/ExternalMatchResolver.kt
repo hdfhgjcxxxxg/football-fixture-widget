@@ -102,8 +102,11 @@ object ExternalMatchResolver {
 
     private fun fetchFotMobDate(date: LocalDate): List<Candidate> {
         val value = date.format(DateTimeFormatter.BASIC_ISO_DATE)
-        // /api/matches is the currently verified daily match endpoint.
-        val root = requestJson("https://www.fotmob.com/api/matches?date=$value")
+        // Prefer the current /api/data/matches route, with the legacy route as fallback.
+        val root = requestJsonWithFallback(
+            "https://www.fotmob.com/api/data/matches?date=$value&timezone=Asia%2FTokyo&ccode3=JPN",
+            "https://www.fotmob.com/api/matches?date=$value"
+        )
         val leagues = root.optJSONArray("leagues") ?: JSONArray()
         return buildList {
             for (i in 0 until leagues.length()) {
@@ -154,6 +157,15 @@ object ExternalMatchResolver {
                 add(Candidate(id, home, away, kickoff, canonicalUrl))
             }
         }
+    }
+
+
+    private fun requestJsonWithFallback(vararg urls: String): JSONObject {
+        var last: Throwable? = null
+        for (url in urls) {
+            try { return requestJson(url) } catch (t: Throwable) { last = t }
+        }
+        throw last ?: IllegalStateException("試合データを取得できませんでした")
     }
 
     private fun requestJson(url: String): JSONObject {

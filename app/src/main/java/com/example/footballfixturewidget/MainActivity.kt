@@ -32,6 +32,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var apiBadge: TextView
     private lateinit var apiStatus: TextView
     private lateinit var testConnectionButton: MaterialButton
+    private lateinit var dataSourceDropdown: AutoCompleteTextView
     private lateinit var favoritesCount: TextView
     private lateinit var favoritesContainer: LinearLayout
     private lateinit var popularTeamsContainer: LinearLayout
@@ -96,6 +97,7 @@ class MainActivity : AppCompatActivity() {
             bindViews()
             selectedColor = FixtureRepository.getWidgetColor(this)
             setupTapTarget()
+            setupDataSource()
             setupColorControls()
             setupPopularTeams()
             setupIconChoices()
@@ -107,7 +109,7 @@ class MainActivity : AppCompatActivity() {
 
             // No automatic SofaScore request here. This is the key safe-start change.
             apiBadge.text = "待機中"
-            apiStatus.text = "「接続を確認」を押すとSofaScoreへ接続します"
+            apiStatus.text = "取得元: ${DataSourceManager.label(this)} • 「接続を確認」で接続します"
             setBusy(false)
         } catch (t: Throwable) {
             RuntimeCrashStore.record(this, "MainActivity.onCreate", t)
@@ -134,6 +136,7 @@ class MainActivity : AppCompatActivity() {
         apiBadge = findViewById(R.id.api_badge)
         apiStatus = findViewById(R.id.api_status)
         testConnectionButton = findViewById(R.id.test_connection_button)
+        dataSourceDropdown = findViewById(R.id.data_source_dropdown)
         favoritesCount = findViewById<TextView>(R.id.favorites_count).apply { visibility = View.GONE }
         favoritesContainer = findViewById(R.id.favorites_container)
         popularTeamsContainer = findViewById(R.id.popular_teams_container)
@@ -160,6 +163,27 @@ class MainActivity : AppCompatActivity() {
         checkUpdateButton = findViewById(R.id.check_update_button)
         progress = findViewById(R.id.progress)
         saveButton = findViewById(R.id.save_button)
+    }
+
+    private fun setupDataSource() {
+        val labels = listOf("両方（自動統合）", "FotMob", "SofaScore")
+        val modes = listOf(DataSourceManager.AUTO_BOTH, DataSourceManager.FOTMOB, DataSourceManager.SOFASCORE)
+        dataSourceDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, labels))
+        val currentMode = DataSourceManager.getMode(this)
+        val index = modes.indexOf(currentMode).coerceAtLeast(0)
+        dataSourceDropdown.setText(labels[index], false)
+        dataSourceDropdown.setOnItemClickListener { _, _, position, _ ->
+            val mode = modes.getOrElse(position) { DataSourceManager.AUTO_BOTH }
+            DataSourceManager.setMode(this, mode)
+            FixtureRepository.clearCache(this)
+            selectedLeague = null
+            selectedFavoriteLeague = null
+            apiBadge.text = "待機中"
+            apiStatus.text = "取得元: ${DataSourceManager.label(mode)} • 接続を確認してください"
+            leagueOptions = emptyList()
+            leagueDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, emptyList<String>()))
+            favoriteLeagueDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, emptyList<String>()))
+        }
     }
 
     private fun setupActions() {
@@ -356,7 +380,7 @@ class MainActivity : AppCompatActivity() {
                 result.onSuccess { applyLeagueDirectory(it, false) }
                     .onFailure {
                         apiBadge.text = "再試行"
-                        apiStatus.text = "リーグ一覧を取得できません • SofaScoreへ再接続してください"
+                        apiStatus.text = "リーグ一覧を取得できません • ${DataSourceManager.label(this)} を再確認してください"
                     }
             }
         }.start()
@@ -389,14 +413,14 @@ class MainActivity : AppCompatActivity() {
         favoriteLeagueDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, labels))
         favoriteLeagueDropdown.setText("", false)
         apiBadge.text = "接続済み"
-        apiStatus.text = "SofaScore API • ${leagues.size}リーグ/大会"
+        apiStatus.text = "${DataSourceManager.label(this)} • ${leagues.size}リーグ/大会"
         if (showToast) toast("接続OK：${leagues.size}大会を取得しました")
     }
 
     private fun loadTeamsForLeague(league: LeagueInfo) {
         setBusy(true)
         Thread {
-            val result = runCatching { FixtureRepository.fetchTeamsForLeague(league.id) }
+            val result = runCatching { FixtureRepository.fetchTeamsForLeague(league) }
             runOnUiThread {
                 setBusy(false)
                 result.onSuccess { teams ->
@@ -414,13 +438,13 @@ class MainActivity : AppCompatActivity() {
             return
         }
         setBusy(true)
-        apiStatus.text = "SofaScoreで検索中…"
+        apiStatus.text = "${DataSourceManager.label(this)}で検索中…"
         Thread {
             val result = runCatching { FixtureRepository.searchTeams(query) }
             runOnUiThread {
                 setBusy(false)
                 result.onSuccess { teams ->
-                    apiStatus.text = "検索OK • SofaScore"
+                    apiStatus.text = "検索OK • ${DataSourceManager.label(this)}"
                     if (teams.isEmpty()) toast("チームが見つかりませんでした。英語名でも試してください")
                     else showTeamPicker("「$query」の検索結果", teams)
                 }.onFailure {
@@ -438,13 +462,13 @@ class MainActivity : AppCompatActivity() {
             return
         }
         setBusy(true)
-        apiStatus.text = "SofaScoreで選手を検索中…"
+        apiStatus.text = "${DataSourceManager.label(this)}で選手を検索中…"
         Thread {
             val result = runCatching { FavoriteEntityRepository.searchPlayers(query) }
             runOnUiThread {
                 setBusy(false)
                 result.onSuccess { players ->
-                    apiStatus.text = "選手検索OK • SofaScore"
+                    apiStatus.text = "選手検索OK • ${DataSourceManager.label(this)}"
                     if (players.isEmpty()) toast("選手が見つかりませんでした。英語表記でも試してください")
                     else showPlayerPicker("「$query」の選手検索", players)
                 }.onFailure {

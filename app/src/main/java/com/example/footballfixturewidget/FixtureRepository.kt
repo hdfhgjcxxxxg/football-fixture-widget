@@ -24,16 +24,29 @@ data class FavoriteTeam(
     val country: String = ""
 ) {
     val sourceLabel: String
-        get() = "SofaScore"
+        get() = when {
+            fotmobId > 0 && sofascoreId > 0 -> "FotMob + SofaScore"
+            fotmobId > 0 -> "FotMob"
+            sofascoreId > 0 -> "SofaScore"
+            else -> ""
+        }
 }
 
 data class LeagueInfo(
     val id: Int,
     val name: String,
     val country: String = "",
-    val ccode: String = ""
+    val ccode: String = "",
+    val fotmobId: Int = 0,
+    val sofascoreId: Int = 0
 ) {
     val label: String get() = if (country.isBlank()) name else "$name  •  $country"
+    val sourceLabel: String get() = when {
+        fotmobId > 0 && sofascoreId > 0 -> "FotMob + SofaScore"
+        fotmobId > 0 -> "FotMob"
+        sofascoreId > 0 -> "SofaScore"
+        else -> ""
+    }
 }
 
 data class NextFixture(
@@ -88,10 +101,8 @@ object FixtureRepository {
 
     fun getWidgetColor(context: Context): Int = prefs(context).getInt(KEY_WIDGET_COLOR, DEFAULT_WIDGET_COLOR)
     fun saveWidgetColor(context: Context, color: Int) = prefs(context).edit().putInt(KEY_WIDGET_COLOR, color).apply()
-    fun getTapTarget(context: Context): String {
-        val saved = prefs(context).getString(KEY_TAP_TARGET, TAP_SOFASCORE) ?: TAP_SOFASCORE
-        return if (saved == TAP_FOTMOB) TAP_SOFASCORE else saved
-    }
+    fun getTapTarget(context: Context): String =
+        prefs(context).getString(KEY_TAP_TARGET, TAP_SOFASCORE) ?: TAP_SOFASCORE
     fun saveTapTarget(context: Context, value: String) = prefs(context).edit().putString(KEY_TAP_TARGET, value).apply()
 
     fun getFavoriteTeams(context: Context): List<FavoriteTeam> {
@@ -212,15 +223,31 @@ object FixtureRepository {
     }
 
     fun fetchLeagueDirectory(): List<LeagueInfo> {
+        val mode = DataSourceManager.getMode(MatchDayApplication.appContext)
+        return when (mode) {
+            DataSourceManager.FOTMOB -> fetchFotMobLeagueDirectory()
+            DataSourceManager.SOFASCORE -> fetchSofaLeagueDirectory()
+            else -> {
+                val fm = runCatching { fetchFotMobLeagueDirectory() }
+                val ss = runCatching { fetchSofaLeagueDirectory() }
+                when {
+                    fm.isSuccess && ss.isSuccess -> mergeLeagueLists(fm.getOrThrow(), ss.getOrThrow())
+                    fm.isSuccess -> fm.getOrThrow()
+                    ss.isSuccess -> ss.getOrThrow()
+                    else -> throw IllegalStateException(
+                        "FotMob: ${fm.exceptionOrNull()?.message ?: "取得失敗"}; SofaScore: ${ss.exceptionOrNull()?.message ?: "取得失敗"}"
+                    )
+                }
+            }
+        }
+    }
+
+    private fun fetchSofaLeagueDirectory(): List<LeagueInfo> {
         val root = requestObjectWithFallback(
-            // Official SofaScore API. v11.9 sends these requests through Android HttpEngine on Android 14+
-            // instead of HttpURLConnection to avoid Java/Android TLS fingerprint blocks.
+            "https://api.sofascore.com/api/v1/config/unique-tournaments/en/football",
+            "https://www.sofascore.com/api/v1/config/unique-tournaments/en/football",
             "https://api.sofascore.com/api/v1/sport/football/unique-tournaments",
-            "https://www.sofascore.com/api/v1/sport/football/unique-tournaments",
-            // Legacy configuration routes are kept only as fallbacks because
-            // SofaScore has changed this route over time and some regions still expose it.
-            "https://api.sofascore.com/api/v1/config/unique-tournaments/EN/football",
-            "https://api.sofascore.com/api/v1/config/unique-tournaments/en/football"
+            "https://www.sofascore.com/api/v1/sport/football/unique-tournaments"
         )
         val tournaments = root.optJSONArray("uniqueTournaments") ?: JSONArray()
         val ordered = LinkedHashMap<Int, LeagueInfo>()
@@ -231,9 +258,49 @@ object FixtureRepository {
             val category = obj.optJSONObject("category")
             val country = category?.optString("name").orEmpty()
             val ccode = category?.optString("alpha2").orEmpty()
-            if (id > 0 && name.isNotBlank()) ordered[id] = LeagueInfo(id, name, country, ccode)
+            if (id > 0 && name.isNotBlank()) {
+                ordered[id] = LeagueInfo(-id, name, country, ccode, fotmobId = 0, sofascoreId = id)
+            }
         }
-        return ordered.values.sortedWith(compareByDescending<LeagueInfo> {
+        return sortLeagues(ordered.values.toList())
+    }
+
+    private fun fetchFotMobLeagueDirectory(): List<LeagueInfo> {
+        val root = requestObjectWithFallback(
+            "https://www.fotmob.com/api/data/allLeagues?locale=en",
+            "https://www.fotmob.com/api/allLeagues?locale=en"
+        )
+        val found = LinkedHashMap<Int, LeagueInfo>()
+        val international = root.optJSONArray("international") ?: JSONArray()
+        for (i in 0 until international.length()) {
+            val o = international.optJSONObject(i) ?: continue
+            val id = firstPositiveInt(o, "id", "leagueId")
+            val name = o.optString("name")
+            if (id > 0 && name.isNotBlank()) {
+                found[id] = LeagueInfo(id, name, "International", "", fotmobId = id)
+            }
+        }
+        val countries = root.optJSONArray("countries") ?: JSONArray()
+        for (i in 0 until countries.length()) {
+            val countryObj = countries.optJSONObject(i) ?: continue
+            val country = countryObj.optString("name")
+            val ccode = countryObj.optString("ccode").ifBlank { countryObj.optString("code") }
+            val leagues = countryObj.optJSONArray("leagues") ?: JSONArray()
+            for (j in 0 until leagues.length()) {
+                val o = leagues.optJSONObject(j) ?: continue
+                val id = firstPositiveInt(o, "id", "leagueId")
+                val name = o.optString("name")
+                if (id > 0 && name.isNotBlank()) {
+                    found[id] = LeagueInfo(id, name, country, ccode, fotmobId = id)
+                }
+            }
+        }
+        if (found.isEmpty()) throw IllegalStateException("FotMobのリーグ一覧が空です")
+        return sortLeagues(found.values.toList())
+    }
+
+    private fun sortLeagues(input: List<LeagueInfo>): List<LeagueInfo> = input.sortedWith(
+        compareByDescending<LeagueInfo> {
             val n = it.name.lowercase(Locale.ROOT)
             when {
                 n.contains("premier league") -> 100
@@ -244,10 +311,72 @@ object FixtureRepository {
                 n.contains("ligue 1") -> 75
                 else -> 0
             }
-        }.thenBy { it.country.lowercase(Locale.ROOT) }.thenBy { it.name.lowercase(Locale.ROOT) })
+        }.thenBy { it.country.lowercase(Locale.ROOT) }.thenBy { it.name.lowercase(Locale.ROOT) }
+    )
+
+    private fun mergeLeagueLists(fotmob: List<LeagueInfo>, sofa: List<LeagueInfo>): List<LeagueInfo> {
+        val out = fotmob.toMutableList()
+        for (ss in sofa) {
+            val matchIndex = out.indexOfFirst { fm ->
+                normalizeTeamName(fm.name) == normalizeTeamName(ss.name) &&
+                    (fm.country.isBlank() || ss.country.isBlank() ||
+                        normalizeTeamName(fm.country) == normalizeTeamName(ss.country) ||
+                        fm.country.equals("International", true) || ss.country.equals("International", true))
+            }.takeIf { it >= 0 } ?: out.indexOfFirst { fm -> normalizeTeamName(fm.name) == normalizeTeamName(ss.name) }
+            if (matchIndex >= 0) {
+                val fm = out[matchIndex]
+                out[matchIndex] = fm.copy(
+                    country = fm.country.ifBlank { ss.country },
+                    ccode = fm.ccode.ifBlank { ss.ccode },
+                    sofascoreId = ss.sofascoreId
+                )
+            } else out += ss
+        }
+        return sortLeagues(out.distinctBy { leagueIdentityKey(it.name, it.country) })
     }
 
+    private fun leagueIdentityKey(name: String, country: String): String =
+        "${normalizeTeamName(name)}|${normalizeTeamName(country)}"
+
     fun fetchTeamsForLeague(leagueId: Int): List<FavoriteTeam> {
+        val league = fetchLeagueDirectory().firstOrNull { it.id == leagueId || it.fotmobId == leagueId || it.sofascoreId == leagueId }
+            ?: return emptyList()
+        return fetchTeamsForLeague(league)
+    }
+
+    fun fetchTeamsForLeague(league: LeagueInfo): List<FavoriteTeam> {
+        val mode = DataSourceManager.getMode(MatchDayApplication.appContext)
+        return when (mode) {
+            DataSourceManager.FOTMOB -> fetchFotMobTeamsForLeague(resolveFotMobLeagueId(league))
+            DataSourceManager.SOFASCORE -> fetchSofaTeamsForLeague(resolveSofaLeagueId(league))
+            else -> {
+                val fm = runCatching { fetchFotMobTeamsForLeague(resolveFotMobLeagueId(league)) }
+                val ss = runCatching { fetchSofaTeamsForLeague(resolveSofaLeagueId(league)) }
+                when {
+                    fm.isSuccess && ss.isSuccess -> mergeTeamLists(fm.getOrThrow(), ss.getOrThrow())
+                    fm.isSuccess -> fm.getOrThrow()
+                    ss.isSuccess -> ss.getOrThrow()
+                    else -> throw IllegalStateException(
+                        "FotMob: ${fm.exceptionOrNull()?.message ?: "取得失敗"}; SofaScore: ${ss.exceptionOrNull()?.message ?: "取得失敗"}"
+                    )
+                }
+            }
+        }
+    }
+
+    private fun resolveFotMobLeagueId(league: LeagueInfo): Int {
+        if (league.fotmobId > 0) return league.fotmobId
+        return fetchFotMobLeagueDirectory().maxByOrNull { nameRelevance(league.name, it.name) }?.fotmobId
+            ?.takeIf { it > 0 } ?: throw IllegalStateException("FotMobで${league.name}を特定できません")
+    }
+
+    private fun resolveSofaLeagueId(league: LeagueInfo): Int {
+        if (league.sofascoreId > 0) return league.sofascoreId
+        return fetchSofaLeagueDirectory().maxByOrNull { nameRelevance(league.name, it.name) }?.sofascoreId
+            ?.takeIf { it > 0 } ?: throw IllegalStateException("SofaScoreで${league.name}を特定できません")
+    }
+
+    private fun fetchSofaTeamsForLeague(leagueId: Int): List<FavoriteTeam> {
         val seasonsRoot = requestObjectWithFallback(
             "https://api.sofascore.com/api/v1/unique-tournament/$leagueId/seasons",
             "https://www.sofascore.com/api/v1/unique-tournament/$leagueId/seasons"
@@ -278,8 +407,7 @@ object FixtureRepository {
         }
 
         if (found.isEmpty()) {
-            val paths = listOf("next/0", "last/0")
-            for (suffix in paths) {
+            for (suffix in listOf("next/0", "last/0")) {
                 runCatching {
                     val eventsRoot = requestObjectWithFallback(
                         "https://api.sofascore.com/api/v1/unique-tournament/$leagueId/season/$seasonId/events/$suffix",
@@ -294,18 +422,81 @@ object FixtureRepository {
                 }
             }
         }
-
         return found.values.sortedBy { it.name.lowercase(Locale.ROOT) }
     }
 
-    /** SofaScore football-team search. */
+    private fun fetchFotMobTeamsForLeague(leagueId: Int): List<FavoriteTeam> {
+        if (leagueId <= 0) return emptyList()
+        val root = requestObjectWithFallback(
+            "https://www.fotmob.com/api/data/leagues?id=$leagueId&ccode3=JPN",
+            "https://www.fotmob.com/api/leagues?id=$leagueId&ccode3=JPN"
+        )
+        val found = LinkedHashMap<Int, FavoriteTeam>()
+        fun addTeam(obj: JSONObject?) {
+            if (obj == null) return
+            val id = firstPositiveInt(obj, "id", "teamId")
+            val name = obj.optString("name").ifBlank { obj.optString("shortName") }
+            if (id <= 0 || name.isBlank()) return
+            val country = obj.optString("country").ifBlank { obj.optJSONObject("country")?.optString("name").orEmpty() }
+            found[id] = FavoriteTeam(id, name, fotmobId = id, country = country)
+        }
+
+        // Current FotMob league payload exposes standings under table[].data.table.all.
+        val table = root.optJSONArray("table") ?: JSONArray()
+        for (i in 0 until table.length()) {
+            val data = table.optJSONObject(i)?.optJSONObject("data") ?: continue
+            val tableObj = data.optJSONObject("table") ?: continue
+            for (key in listOf("all", "home", "away")) {
+                val rows = tableObj.optJSONArray(key) ?: continue
+                for (j in 0 until rows.length()) addTeam(rows.optJSONObject(j))
+            }
+        }
+
+        // Fallback for cups / leagues without standings: collect only home/away team objects from matches.
+        if (found.isEmpty()) {
+            walkJson(root, maxDepth = 12) { obj ->
+                if (obj.optJSONObject("home") != null && obj.optJSONObject("away") != null) {
+                    addTeam(obj.optJSONObject("home")); addTeam(obj.optJSONObject("away"))
+                }
+            }
+        }
+        return found.values.sortedBy { it.name.lowercase(Locale.ROOT) }
+    }
+
+    /** Team search obeys the selected provider mode. */
     fun searchTeams(term: String): List<FavoriteTeam> {
         val clean = term.trim()
         if (clean.length < 2) return emptyList()
-        return searchSofaScoreTeams(clean).sortedWith(
+        val mode = DataSourceManager.getMode(MatchDayApplication.appContext)
+        val values = when (mode) {
+            DataSourceManager.FOTMOB -> searchFotMobTeams(clean)
+            DataSourceManager.SOFASCORE -> searchSofaScoreTeams(clean)
+            else -> {
+                val fm = runCatching { searchFotMobTeams(clean) }
+                val ss = runCatching { searchSofaScoreTeams(clean) }
+                when {
+                    fm.isSuccess && ss.isSuccess -> mergeTeamLists(fm.getOrThrow(), ss.getOrThrow())
+                    fm.isSuccess -> fm.getOrThrow()
+                    ss.isSuccess -> ss.getOrThrow()
+                    else -> throw IllegalStateException(
+                        "FotMob: ${fm.exceptionOrNull()?.message ?: "検索失敗"}; SofaScore: ${ss.exceptionOrNull()?.message ?: "検索失敗"}"
+                    )
+                }
+            }
+        }
+        return values.sortedWith(
             compareByDescending<FavoriteTeam> { nameRelevance(clean, it.name) }
                 .thenBy { it.name.lowercase(Locale.ROOT) }
         ).take(50)
+    }
+
+    private fun mergeTeamLists(fotmob: List<FavoriteTeam>, sofa: List<FavoriteTeam>): List<FavoriteTeam> {
+        val out = fotmob.toMutableList()
+        for (ss in sofa) {
+            val idx = out.indexOfFirst { fm -> normalizeTeamName(fm.name) == normalizeTeamName(ss.name) }
+            if (idx >= 0) out[idx] = mergeTeam(out[idx], ss) else out += ss
+        }
+        return out.distinctBy { normalizeTeamName(it.name) }
     }
 
     private fun searchFotMobTeams(term: String): List<FavoriteTeam> {
@@ -401,13 +592,63 @@ object FixtureRepository {
     fun fetchNextFixtureForTeam(team: FavoriteTeam): NextFixture? = fetchNextFixture(team)
 
     private fun fetchNextFixture(team: FavoriteTeam): NextFixture? {
-        val sofaTeam = if (team.sofascoreId > 0) team else {
-            searchSofaScoreTeams(team.name).maxByOrNull { nameRelevance(team.name, it.name) }
-                ?: throw IllegalStateException("SofaScoreでチームを特定できません")
+        val mode = DataSourceManager.getMode(MatchDayApplication.appContext)
+
+        fun fotmob(): NextFixture? {
+            val fmTeam = if (team.fotmobId > 0) team else {
+                searchFotMobTeams(team.name).maxByOrNull { nameRelevance(team.name, it.name) }
+                    ?: throw IllegalStateException("FotMobでチームを特定できません")
+            }
+            return fetchNextFixtureFotMob(fmTeam)?.copy(teamId = team.id, teamName = team.name)
         }
-        return fetchNextFixtureSofaScore(sofaTeam).let { fixture ->
-            if (fixture == null) null else fixture.copy(teamId = team.id, teamName = team.name)
+
+        fun sofa(): NextFixture? {
+            val sofaTeam = if (team.sofascoreId > 0) team else {
+                searchSofaScoreTeams(team.name).maxByOrNull { nameRelevance(team.name, it.name) }
+                    ?: throw IllegalStateException("SofaScoreでチームを特定できません")
+            }
+            return fetchNextFixtureSofaScore(sofaTeam)?.copy(teamId = team.id, teamName = team.name)
         }
+
+        return when (mode) {
+            DataSourceManager.FOTMOB -> fotmob()
+            DataSourceManager.SOFASCORE -> sofa()
+            else -> {
+                val fm = runCatching { fotmob() }
+                val ss = runCatching { sofa() }
+                val fmFixture = fm.getOrNull()
+                val ssFixture = ss.getOrNull()
+                when {
+                    fmFixture != null && ssFixture != null -> mergeFixtureProviders(fmFixture, ssFixture)
+                    fmFixture != null -> fmFixture
+                    ssFixture != null -> ssFixture
+                    fm.isFailure && ss.isFailure -> throw IllegalStateException(
+                        "FotMob: ${fm.exceptionOrNull()?.message ?: "取得失敗"}; SofaScore: ${ss.exceptionOrNull()?.message ?: "取得失敗"}"
+                    )
+                    else -> null
+                }
+            }
+        }
+    }
+
+    private fun mergeFixtureProviders(fm: NextFixture, ss: NextFixture): NextFixture {
+        val sameOpponent = normalizeTeamName(fm.opponent) == normalizeTeamName(ss.opponent)
+        val fmTime = runCatching { Instant.parse(fm.utcDate) }.getOrNull()
+        val ssTime = runCatching { Instant.parse(ss.utcDate) }.getOrNull()
+        val closeTime = fmTime != null && ssTime != null && kotlin.math.abs(fmTime.epochSecond - ssTime.epochSecond) <= 6 * 3600
+        val base = when {
+            sameOpponent && closeTime -> fm
+            fmTime == null -> ss
+            ssTime == null -> fm
+            fmTime.isBefore(ssTime) -> fm
+            else -> ss
+        }
+        return base.copy(
+            fotmobMatchId = if (fm.fotmobMatchId > 0L) fm.fotmobMatchId else base.fotmobMatchId,
+            fotmobUrl = fm.fotmobUrl.ifBlank { base.fotmobUrl },
+            sofascoreEventId = if (ss.sofascoreEventId > 0L) ss.sofascoreEventId else base.sofascoreEventId,
+            sofascoreUrl = ss.sofascoreUrl.ifBlank { base.sofascoreUrl }
+        )
     }
 
     private fun fetchNextFixtureFotMob(team: FavoriteTeam): NextFixture? {
@@ -577,9 +818,12 @@ object FixtureRepository {
             }
         }
 
-        // v11 resolves both providers regardless of the currently selected tap target so
-        // switching FotMob/SofaScore later never leaves stale/missing event IDs.
-        val linked = ExternalMatchResolver.resolveAll(fixtures)
+        val mode = DataSourceManager.getMode(context)
+        val linked = when (mode) {
+            DataSourceManager.FOTMOB -> ExternalMatchResolver.resolveForTarget(fixtures, TAP_FOTMOB)
+            DataSourceManager.SOFASCORE -> ExternalMatchResolver.resolveForTarget(fixtures, TAP_SOFASCORE)
+            else -> ExternalMatchResolver.resolveAll(fixtures)
+        }
         val state = WidgetState(linked, System.currentTimeMillis(), errors.firstOrNull())
         saveCache(context, state)
         runCatching { AdvancedStatsRepository.refreshTeamExtras(context, favorites) }

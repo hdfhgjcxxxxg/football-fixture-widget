@@ -22,7 +22,7 @@ object EntityImageLoader {
                     candidate.name.equals(player.name, true) &&
                         (player.teamName.isBlank() || candidate.teamName.isBlank() || candidate.teamName.equals(player.teamName, true))
                 }
-                .firstOrNull { it.sofascoreId > 0 }
+                .firstOrNull()
         }.getOrNull()
         return if (resolved != null) {
             load(context, "player_${player.id}_cross", FavoriteEntityRepository.playerImageUrls(resolved))
@@ -30,8 +30,12 @@ object EntityImageLoader {
     }
 
     fun loadLeague(context: Context, league: FavoriteLeague): Bitmap? {
-        val sofaId = runCatching { FavoriteEntityRepository.resolveSofaLeagueId(league) }.getOrDefault(league.id)
-        return load(context, "league_ss_$sofaId", listOf("https://img.sofascore.com/api/v1/unique-tournament/$sofaId/image"))
+        var urls = FavoriteEntityRepository.leagueImageUrls(league)
+        if (urls.isEmpty() && DataSourceManager.getMode(context) != DataSourceManager.FOTMOB) {
+            val sofaId = runCatching { FavoriteEntityRepository.resolveSofaLeagueId(league) }.getOrDefault(0)
+            if (sofaId > 0) urls = listOf("https://img.sofascore.com/api/v1/unique-tournament/$sofaId/image")
+        }
+        return load(context, "league_${league.id}_${DataSourceManager.getMode(context)}", urls)
     }
 
     private fun load(context: Context, key: String, urls: List<String>): Bitmap? {

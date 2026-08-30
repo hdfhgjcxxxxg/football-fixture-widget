@@ -18,11 +18,32 @@ object TeamLogoLoader {
     }
 
     fun load(context: Context, team: FavoriteTeam): Bitmap? {
-        val sofaId = if (team.sofascoreId > 0) team.sofascoreId else runCatching {
-            FixtureRepository.searchTeams(team.name).firstOrNull()?.sofascoreId ?: 0
-        }.getOrDefault(0)
-        if (sofaId <= 0) return null
-        return loadFromUrls(context, "ss_$sofaId", listOf("https://img.sofascore.com/api/v1/team/$sofaId/image"))
+        val mode = DataSourceManager.getMode(context)
+        var resolved = team
+        if ((mode != DataSourceManager.SOFASCORE && resolved.fotmobId <= 0) ||
+            (mode != DataSourceManager.FOTMOB && resolved.sofascoreId <= 0)) {
+            resolved = runCatching {
+                FixtureRepository.searchTeams(team.name).firstOrNull {
+                    FixtureRepository.normalizeTeamName(it.name) == FixtureRepository.normalizeTeamName(team.name)
+                } ?: FixtureRepository.searchTeams(team.name).firstOrNull()
+            }.getOrNull()?.let { candidate ->
+                FavoriteTeam(
+                    id = if (team.id != 0) team.id else candidate.id,
+                    name = team.name.ifBlank { candidate.name },
+                    fotmobId = if (team.fotmobId > 0) team.fotmobId else candidate.fotmobId,
+                    sofascoreId = if (team.sofascoreId > 0) team.sofascoreId else candidate.sofascoreId,
+                    country = team.country.ifBlank { candidate.country }
+                )
+            } ?: team
+        }
+        val urls = buildList {
+            if (mode != DataSourceManager.SOFASCORE && resolved.fotmobId > 0)
+                add("https://images.fotmob.com/image_resources/logo/teamlogo/${resolved.fotmobId}.png")
+            if (mode != DataSourceManager.FOTMOB && resolved.sofascoreId > 0)
+                add("https://img.sofascore.com/api/v1/team/${resolved.sofascoreId}/image")
+        }
+        val key = "team_${resolved.fotmobId}_${resolved.sofascoreId}_${mode}"
+        return loadFromUrls(context, key, urls)
     }
 
     private fun loadFromUrls(context: Context, cacheKey: String, urls: List<String>): Bitmap? {

@@ -135,7 +135,7 @@ private object WidgetRenderer {
             updatedAt <= 0L -> "未更新"
             else -> "更新 ${FixtureRepository.formatUpdatedAt(updatedAt)}"
         }
-        views.setTextViewText(R.id.status_text, "SofaScore • $status")
+        views.setTextViewText(R.id.status_text, "${DataSourceManager.label(context)} • $status")
         manager.updateAppWidget(widgetId, views)
     }
 }

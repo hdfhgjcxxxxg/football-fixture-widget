@@ -22,16 +22,29 @@ data class FavoritePlayer(
     val position: String = ""
 ) {
     val sourceLabel: String
-        get() = "SofaScore"
+        get() = when {
+            fotmobId > 0 && sofascoreId > 0 -> "FotMob + SofaScore"
+            fotmobId > 0 -> "FotMob"
+            sofascoreId > 0 -> "SofaScore"
+            else -> ""
+        }
 }
 
 data class FavoriteLeague(
     val id: Int,
     val name: String,
     val country: String = "",
-    val ccode: String = ""
+    val ccode: String = "",
+    val fotmobId: Int = 0,
+    val sofascoreId: Int = 0
 ) {
     val label: String get() = if (country.isBlank()) name else "$name  •  $country"
+    val sourceLabel: String get() = when {
+        fotmobId > 0 && sofascoreId > 0 -> "FotMob + SofaScore"
+        fotmobId > 0 -> "FotMob"
+        sofascoreId > 0 -> "SofaScore"
+        else -> ""
+    }
 }
 
 /**
@@ -120,13 +133,24 @@ object FavoriteEntityRepository {
             buildList {
                 for (i in 0 until array.length()) {
                     val o = array.optJSONObject(i) ?: continue
-                    val id = o.optInt("id")
+                    val legacyId = o.optInt("id")
                     val name = o.optString("name")
-                    if (id > 0 && name.isNotBlank()) {
-                        add(FavoriteLeague(id, name, o.optString("country"), o.optString("ccode")))
-                    }
+                    if (legacyId == 0 || name.isBlank()) continue
+                    val storedFm = o.optInt("fotmobId")
+                    val storedSs = o.optInt("sofascoreId")
+                    // v11.3-v11.11 were SofaScore-centric, while older installs may carry
+                    // FotMob IDs. Keep the legacy id as a stable selection key and resolve
+                    // missing provider IDs by name when that provider is selected.
+                    add(FavoriteLeague(
+                        id = legacyId,
+                        name = name,
+                        country = o.optString("country"),
+                        ccode = o.optString("ccode"),
+                        fotmobId = storedFm,
+                        sofascoreId = storedSs
+                    ))
                 }
-            }.distinctBy { it.id }
+            }.distinctBy { leagueKey(it.name, it.country) }
         }.getOrDefault(emptyList())
     }
 
@@ -138,6 +162,8 @@ object FavoriteEntityRepository {
                 put("name", l.name)
                 put("country", l.country)
                 put("ccode", l.ccode)
+                put("fotmobId", l.fotmobId)
+                put("sofascoreId", l.sofascoreId)
             })
         }
         prefs(context).edit().putString(KEY_LEAGUES, array.toString()).apply()
@@ -145,8 +171,10 @@ object FavoriteEntityRepository {
 
     fun addFavoriteLeague(context: Context, league: LeagueInfo): Boolean {
         val current = getFavoriteLeagues(context).toMutableList()
-        if (current.any { it.id == league.id }) return true
-        current += FavoriteLeague(league.id, league.name, league.country, league.ccode)
+        val key = leagueKey(league.name, league.country)
+        val idx = current.indexOfFirst { leagueKey(it.name, it.country) == key || normalize(it.name) == normalize(league.name) }
+        val incoming = FavoriteLeague(league.id, league.name, league.country, league.ccode, league.fotmobId, league.sofascoreId)
+        if (idx >= 0) current[idx] = mergeLeague(current[idx], incoming) else current += incoming
         saveFavoriteLeagues(context, current)
         return true
     }
@@ -159,7 +187,24 @@ object FavoriteEntityRepository {
         val clean = term.trim()
         if (clean.length < 2) return emptyList()
         val q = normalize(clean)
-        return searchSofaPlayers(clean).sortedWith(
+        val mode = DataSourceManager.getMode(MatchDayApplication.appContext)
+        val players = when (mode) {
+            DataSourceManager.FOTMOB -> searchFotMobPlayers(clean)
+            DataSourceManager.SOFASCORE -> searchSofaPlayers(clean)
+            else -> {
+                val fm = runCatching { searchFotMobPlayers(clean) }
+                val ss = runCatching { searchSofaPlayers(clean) }
+                when {
+                    fm.isSuccess && ss.isSuccess -> mergePlayerLists(fm.getOrThrow(), ss.getOrThrow())
+                    fm.isSuccess -> fm.getOrThrow()
+                    ss.isSuccess -> ss.getOrThrow()
+                    else -> throw IllegalStateException(
+                        "FotMob: ${fm.exceptionOrNull()?.message ?: "検索失敗"}; SofaScore: ${ss.exceptionOrNull()?.message ?: "検索失敗"}"
+                    )
+                }
+            }
+        }
+        return players.sortedWith(
             compareByDescending<FavoritePlayer> {
                 val n = normalize(it.name)
                 when {
@@ -170,6 +215,19 @@ object FavoriteEntityRepository {
                 }
             }.thenBy { it.name.lowercase(Locale.ROOT) }
         ).take(50)
+    }
+
+    private fun mergePlayerLists(fotmob: List<FavoritePlayer>, sofa: List<FavoritePlayer>): List<FavoritePlayer> {
+        val out = fotmob.toMutableList()
+        for (ss in sofa) {
+            var idx = out.indexOfFirst { fm -> playerKey(fm.name, fm.teamName) == playerKey(ss.name, ss.teamName) }
+            if (idx < 0) {
+                val sameName = out.withIndex().filter { normalize(it.value.name) == normalize(ss.name) }
+                if (sameName.size == 1) idx = sameName.first().index
+            }
+            if (idx >= 0) out[idx] = mergePlayer(out[idx], ss) else out += ss
+        }
+        return out.distinctBy { playerKey(it.name, it.teamName) }
     }
 
     private fun searchFotMobPlayers(term: String): List<FavoritePlayer> {
@@ -269,8 +327,53 @@ object FavoriteEntityRepository {
         return found.values.toList()
     }
 
-    /** Fill missing team information so a player's widget can show the next club match. */
+    /** Fill missing provider/team information so a player's widget can show the next club match. */
     fun hydratePlayerTeam(player: FavoritePlayer): FavoritePlayer {
+        val mode = DataSourceManager.getMode(MatchDayApplication.appContext)
+        return when (mode) {
+            DataSourceManager.FOTMOB -> hydratePlayerTeamFotMob(player)
+            DataSourceManager.SOFASCORE -> hydratePlayerTeamSofa(player)
+            else -> {
+                var out = runCatching { hydratePlayerTeamFotMob(player) }.getOrDefault(player)
+                out = runCatching { hydratePlayerTeamSofa(out) }.getOrDefault(out)
+                out
+            }
+        }
+    }
+
+    private fun hydratePlayerTeamFotMob(player: FavoritePlayer): FavoritePlayer {
+        var resolved = player
+        if (resolved.fotmobId <= 0) {
+            val candidate = runCatching {
+                searchFotMobPlayers(player.name).maxByOrNull {
+                    val nameMatch = if (it.name.equals(player.name, true)) 2 else 1
+                    val teamMatch = if (player.teamName.isNotBlank() && it.teamName.equals(player.teamName, true)) 2 else 0
+                    nameMatch + teamMatch
+                }
+            }.getOrNull()
+            if (candidate != null) resolved = mergePlayer(resolved, candidate)
+        }
+        if (resolved.fotmobId <= 0) return resolved
+        return runCatching {
+            val root = requestObject(
+                "https://www.fotmob.com/api/data/playerData?id=${resolved.fotmobId}&includeMarketValues=false",
+                "https://www.fotmob.com/api/playerData?id=${resolved.fotmobId}&includeMarketValues=false"
+            )
+            val primary = root.optJSONObject("primaryTeam") ?: root.optJSONObject("team")
+            val teamId = primary?.let { firstPositiveInt(it, "id", "teamId") }
+                ?.takeIf { it > 0 } ?: firstPositiveInt(root, "teamId", "primaryTeamId")
+            val teamName = primary?.optString("teamName").orEmpty()
+                .ifBlank { primary?.optString("name").orEmpty() }
+                .ifBlank { root.optString("teamName") }
+            resolved.copy(
+                teamName = resolved.teamName.ifBlank { teamName },
+                fotmobTeamId = if (teamId > 0) teamId else resolved.fotmobTeamId,
+                position = resolved.position.ifBlank { root.optString("position") }
+            )
+        }.getOrDefault(resolved)
+    }
+
+    private fun hydratePlayerTeamSofa(player: FavoritePlayer): FavoritePlayer {
         var resolved = player
         if (resolved.sofascoreId <= 0) {
             val candidate = runCatching {
@@ -280,14 +383,7 @@ object FavoriteEntityRepository {
                     nameMatch + teamMatch
                 }
             }.getOrNull()
-            if (candidate != null) {
-                resolved = resolved.copy(
-                    sofascoreId = candidate.sofascoreId,
-                    sofascoreTeamId = candidate.sofascoreTeamId,
-                    teamName = resolved.teamName.ifBlank { candidate.teamName },
-                    position = resolved.position.ifBlank { candidate.position }
-                )
-            }
+            if (candidate != null) resolved = mergePlayer(resolved, candidate)
         }
         if (resolved.sofascoreId <= 0) return resolved
         return runCatching {
@@ -308,6 +404,7 @@ object FavoriteEntityRepository {
 
 
     fun resolveSofaLeagueId(league: FavoriteLeague): Int {
+        if (league.sofascoreId > 0) return league.sofascoreId
         val encoded = URLEncoder.encode(league.name, StandardCharsets.UTF_8.toString())
         val root = requestObject(
             "https://api.sofascore.com/api/v1/search/all?q=$encoded",
@@ -330,16 +427,26 @@ object FavoriteEntityRepository {
             val score = when { n == q -> 100; n.startsWith(q) || q.startsWith(n) -> 90; n.contains(q) || q.contains(n) -> 80; else -> 0 }
             if (score > bestScore) { bestScore = score; bestId = id }
         }
-        return if (bestId > 0) bestId else league.id
+        return bestId.takeIf { it > 0 } ?: 0
     }
 
     fun playerImageUrls(player: FavoritePlayer): List<String> = buildList {
-        if (player.sofascoreId > 0) add("https://img.sofascore.com/api/v1/player/${player.sofascoreId}/image")
+        val mode = DataSourceManager.getMode(MatchDayApplication.appContext)
+        if (mode != DataSourceManager.SOFASCORE && player.fotmobId > 0)
+            add("https://images.fotmob.com/image_resources/playerimages/${player.fotmobId}.png")
+        if (mode != DataSourceManager.FOTMOB && player.sofascoreId > 0)
+            add("https://img.sofascore.com/api/v1/player/${player.sofascoreId}/image")
+        if (mode == DataSourceManager.AUTO_BOTH && player.fotmobId > 0 && none { it.contains("fotmob") })
+            add("https://images.fotmob.com/image_resources/playerimages/${player.fotmobId}.png")
     }
 
-    fun leagueImageUrls(league: FavoriteLeague): List<String> = listOf(
-        "https://img.sofascore.com/api/v1/unique-tournament/${league.id}/image"
-    )
+    fun leagueImageUrls(league: FavoriteLeague): List<String> = buildList {
+        val mode = DataSourceManager.getMode(MatchDayApplication.appContext)
+        if (mode != DataSourceManager.SOFASCORE && league.fotmobId > 0)
+            add("https://images.fotmob.com/image_resources/logo/leaguelogo/${league.fotmobId}.png")
+        if (mode != DataSourceManager.FOTMOB && league.sofascoreId > 0)
+            add("https://img.sofascore.com/api/v1/unique-tournament/${league.sofascoreId}/image")
+    }
 
     private fun mergePlayer(a: FavoritePlayer, b: FavoritePlayer): FavoritePlayer {
         val fm = if (a.fotmobId > 0) a.fotmobId else b.fotmobId
@@ -357,6 +464,24 @@ object FavoriteEntityRepository {
             position = a.position.ifBlank { b.position }
         )
     }
+
+    private fun mergeLeague(a: FavoriteLeague, b: FavoriteLeague): FavoriteLeague {
+        val fm = if (a.fotmobId > 0) a.fotmobId else b.fotmobId
+        val ss = if (a.sofascoreId > 0) a.sofascoreId else b.sofascoreId
+        val stable = when {
+            fm > 0 -> fm
+            ss > 0 -> -ss
+            a.id != 0 -> a.id
+            else -> b.id
+        }
+        return FavoriteLeague(
+            id = stable, name = if (a.name.length >= b.name.length) a.name else b.name,
+            country = a.country.ifBlank { b.country }, ccode = a.ccode.ifBlank { b.ccode },
+            fotmobId = fm, sofascoreId = ss
+        )
+    }
+
+    private fun leagueKey(name: String, country: String): String = "${normalize(name)}|${normalize(country)}"
 
     private fun playerKey(name: String, teamName: String): String = "${normalize(name)}|${normalize(teamName)}"
 

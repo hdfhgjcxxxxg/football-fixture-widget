@@ -13,8 +13,8 @@ import java.util.Locale
 import kotlin.math.max
 
 /**
- * Rich, best-effort data used by v11 widgets.
- * SofaScore is the single data source for fixtures, lineups, player ratings and league rounds.
+ * Rich, best-effort data for MatchDay widgets.
+ * v12 supports FotMob, SofaScore, or both with automatic fallback/merging where possible.
  */
 data class RichEvent(
     val eventId: Long,
@@ -31,18 +31,26 @@ data class RichEvent(
     val roundLabel: String,
     val slug: String,
     val customId: String,
-    val liveMinute: Int = 0
+    val liveMinute: Int = 0,
+    val provider: String = DataSourceManager.SOFASCORE,
+    val providerUrl: String = ""
 ) {
     val isLive: Boolean get() = statusType.equals("inprogress", true) || statusType.equals("live", true)
     val isFinished: Boolean get() = statusType.equals("finished", true) || statusType.equals("ended", true)
     val isScheduled: Boolean get() = !isLive && !isFinished
     val scoreText: String get() = if (homeScore != null && awayScore != null) "$homeScore-$awayScore" else "-"
     val sofaUrl: String
-        get() = when {
-            slug.isNotBlank() && customId.isNotBlank() -> "https://www.sofascore.com/football/match/$slug/$customId#id:$eventId"
-            slug.isNotBlank() -> "https://www.sofascore.com/football/match/$slug#id:$eventId"
-            else -> "https://www.sofascore.com/football/match/match#id:$eventId"
-        }
+        get() = if (provider == DataSourceManager.SOFASCORE) {
+            when {
+                providerUrl.isNotBlank() -> providerUrl
+                slug.isNotBlank() && customId.isNotBlank() -> "https://www.sofascore.com/football/match/$slug/$customId#id:$eventId"
+                slug.isNotBlank() -> "https://www.sofascore.com/football/match/$slug#id:$eventId"
+                else -> "https://www.sofascore.com/football/match/match#id:$eventId"
+            }
+        } else ""
+
+    val fotmobUrl: String
+        get() = if (provider == DataSourceManager.FOTMOB) providerUrl.ifBlank { "https://www.fotmob.com/match/$eventId" } else ""
 
     fun asFixture(ownerId: Int, ownerName: String, ownerTeamId: Int = 0): NextFixture {
         val isHome = ownerTeamId > 0 && ownerTeamId == homeId || ownerTeamId <= 0 && normalizeName(ownerName) == normalizeName(homeName)
@@ -58,7 +66,9 @@ data class RichEvent(
             homeTeamShortName = homeName,
             awayTeamName = awayName,
             awayTeamShortName = awayName,
-            sofascoreEventId = eventId,
+            fotmobMatchId = if (provider == DataSourceManager.FOTMOB) eventId else 0L,
+            fotmobUrl = fotmobUrl,
+            sofascoreEventId = if (provider == DataSourceManager.SOFASCORE) eventId else 0L,
             sofascoreUrl = sofaUrl
         )
     }
@@ -120,8 +130,14 @@ object AdvancedStatsRepository {
     fun refreshTeamExtras(context: Context, teams: List<FavoriteTeam>): Map<Int, TeamExtra> {
         val old = loadTeamExtras(context)
         val out = LinkedHashMap<Int, TeamExtra>()
+        val mode = DataSourceManager.getMode(context)
         teams.forEach { team ->
-            val extra = runCatching { fetchTeamExtra(team) }.getOrNull() ?: old[team.id]
+            val extra = when (mode) {
+                DataSourceManager.FOTMOB -> runCatching { fetchTeamExtraFotMob(team) }.getOrNull()
+                DataSourceManager.SOFASCORE -> runCatching { fetchTeamExtra(team) }.getOrNull()
+                else -> runCatching { fetchTeamExtra(team) }.getOrNull()
+                    ?: runCatching { fetchTeamExtraFotMob(team) }.getOrNull()
+            } ?: old[team.id]
             if (extra != null) out[team.id] = extra
         }
         saveTeamExtras(context, out)
@@ -131,8 +147,14 @@ object AdvancedStatsRepository {
     fun refreshPlayerExtras(context: Context, players: List<FavoritePlayer>): Map<Int, PlayerExtra> {
         val old = loadPlayerExtras(context)
         val out = LinkedHashMap<Int, PlayerExtra>()
+        val mode = DataSourceManager.getMode(context)
         players.forEach { player ->
-            val extra = runCatching { fetchPlayerExtra(player) }.getOrNull() ?: old[player.id]
+            val extra = when (mode) {
+                DataSourceManager.FOTMOB -> runCatching { fetchPlayerExtraFotMob(player) }.getOrNull()
+                DataSourceManager.SOFASCORE -> runCatching { fetchPlayerExtra(player) }.getOrNull()
+                else -> runCatching { fetchPlayerExtra(player) }.getOrNull()
+                    ?: runCatching { fetchPlayerExtraFotMob(player) }.getOrNull()
+            } ?: old[player.id]
             if (extra != null) out[player.id] = extra
         }
         savePlayerExtras(context, out)
@@ -142,8 +164,14 @@ object AdvancedStatsRepository {
     fun refreshLeagueRounds(context: Context, leagues: List<FavoriteLeague>): Map<Int, LeagueRoundData> {
         val old = loadLeagueRounds(context)
         val out = LinkedHashMap<Int, LeagueRoundData>()
+        val mode = DataSourceManager.getMode(context)
         leagues.forEach { league ->
-            val data = runCatching { fetchLeagueRound(league) }.getOrNull() ?: old[league.id]
+            val data = when (mode) {
+                DataSourceManager.FOTMOB -> runCatching { fetchLeagueRoundFotMob(league) }.getOrNull()
+                DataSourceManager.SOFASCORE -> runCatching { fetchLeagueRound(league) }.getOrNull()
+                else -> runCatching { fetchLeagueRound(league) }.getOrNull()
+                    ?: runCatching { fetchLeagueRoundFotMob(league) }.getOrNull()
+            } ?: old[league.id]
             if (data != null) out[league.id] = data
         }
         saveLeagueRounds(context, out)
@@ -246,6 +274,252 @@ object AdvancedStatsRepository {
             }
         }
         return TeamExtra(team.id, sofaId, live, last, next, recent)
+    }
+
+    private fun fetchTeamExtraFotMob(team: FavoriteTeam): TeamExtra {
+        val fmId = resolveFotMobTeamId(team)
+        if (fmId <= 0) throw IllegalStateException("FotMob team id unavailable")
+        val events = fetchFotMobTeamEvents(fmId)
+        val live = events.firstOrNull { it.isLive }
+        val last = events.filter { it.isFinished }.maxByOrNull { it.startTimestamp }
+        val next = events.filter { it.isScheduled }.minByOrNull { it.startTimestamp }
+        val recent = events.filter { it.isFinished }.sortedByDescending { it.startTimestamp }.take(5).map { event ->
+            val isHome = event.homeId == fmId
+            val own = if (isHome) event.homeScore else event.awayScore
+            val opp = if (isHome) event.awayScore else event.homeScore
+            when {
+                own == null || opp == null -> "-"
+                own > opp -> "W${own}-${opp}"
+                own < opp -> "L${own}-${opp}"
+                else -> "D${own}-${opp}"
+            }
+        }
+        return TeamExtra(team.id, fmId, live, last, next, recent)
+    }
+
+    private fun fetchFotMobTeamEvents(teamId: Int): List<RichEvent> {
+        val root = requestObjectAbsolute("https://www.fotmob.com/api/data/teams?id=$teamId&ccode3=JPN")
+        val found = LinkedHashMap<Long, RichEvent>()
+        walkJson(root, 0, 14) { o ->
+            if (o.optJSONObject("home") != null && o.optJSONObject("away") != null) {
+                parseFotMobEvent(o)?.let { if (it.eventId > 0) found[it.eventId] = it }
+            }
+        }
+        return found.values.sortedBy { it.startTimestamp }
+    }
+
+    private fun fetchPlayerExtraFotMob(player: FavoritePlayer): PlayerExtra {
+        var resolved = player
+        if (resolved.fotmobId <= 0 || resolved.fotmobTeamId <= 0) {
+            resolved = FavoriteEntityRepository.hydratePlayerTeam(resolved)
+        }
+        val playerId = resolved.fotmobId
+        val teamId = resolved.fotmobTeamId
+        if (playerId <= 0) throw IllegalStateException("FotMob player id unavailable")
+
+        val events = if (teamId > 0) fetchFotMobTeamEvents(teamId) else emptyList()
+        val live = events.firstOrNull { it.isLive }
+        val next = events.filter { it.isScheduled }.minByOrNull { it.startTimestamp }
+        val finished = events.filter { it.isFinished }.sortedByDescending { it.startTimestamp }.take(5)
+        val performances = finished.mapNotNull { event ->
+            runCatching { fetchFotMobPlayerPerformance(event, playerId, teamId, resolved.teamName, resolved.position) }.getOrNull()
+        }
+        val ratings = performances.mapNotNull { it.rating.takeIf(String::isNotBlank) }.take(5)
+        val last = finished.firstOrNull()
+        val lastPerf = performances.firstOrNull { it.eventId == last?.eventId }
+        val target = live ?: next
+        val lineup = if (target != null) runCatching { fetchFotMobLineupStatus(target.eventId, playerId) }.getOrDefault("未発表") else "試合なし"
+        return PlayerExtra(player.id, playerId, teamId, lineup, live, next, last, ratings, lastPerf)
+    }
+
+    private fun fetchFotMobPlayerPerformance(event: RichEvent, playerId: Int, teamId: Int, teamName: String, position: String): PlayerPerformance {
+        val root = requestObjectAbsolute("https://www.fotmob.com/api/data/matchDetails?matchId=${event.eventId}")
+        val content = root.optJSONObject("content") ?: JSONObject()
+        var stats: JSONObject? = content.optJSONObject("playerStats")?.optJSONObject(playerId.toString())
+
+        if (stats == null) {
+            val lineup = content.optJSONObject("lineup")
+            val lineups = lineup?.optJSONArray("lineups") ?: JSONArray()
+            loop@ for (i in 0 until lineups.length()) {
+                val players = lineups.optJSONObject(i)?.optJSONArray("players") ?: continue
+                for (j in 0 until players.length()) {
+                    val e = players.optJSONObject(j) ?: continue
+                    val p = e.optJSONObject("player") ?: e
+                    val id = firstInt(p, "id", "playerId").takeIf { it > 0 } ?: firstInt(e, "id", "playerId")
+                    if (id == playerId) { stats = e.optJSONObject("stats") ?: e.optJSONObject("statistics") ?: e; break@loop }
+                }
+            }
+        }
+        val s = stats ?: JSONObject()
+        val rating = extractFotMobRating(s)
+        val goals = firstInt(s, "goals", "goalsScored")
+        val assists = firstInt(s, "assists", "goalAssist", "goalAssists")
+        val minutes = firstInt(s, "minutesPlayed", "minutes", "minutesOnField")
+        val isHome = when {
+            teamId > 0 -> event.homeId == teamId
+            teamName.isNotBlank() -> normalize(event.homeName) == normalize(teamName)
+            else -> false
+        }
+        val oppScore = if (isHome) event.awayScore else event.homeScore
+        val resultText = if (event.homeScore != null && event.awayScore != null) "${event.homeName} ${event.scoreText} ${event.awayName}" else ""
+        val pos = position.uppercase(Locale.ROOT)
+        val tookPart = minutes > 0 || rating.isNotBlank()
+        val cleanSheet = (pos.startsWith("D") || pos.startsWith("G")) && tookPart && oppScore == 0
+        return PlayerPerformance(event.eventId, rating, goals, assists, cleanSheet, minutes, resultText)
+    }
+
+    private fun extractFotMobRating(o: JSONObject): String {
+        fun format(v: Any?): String = when (v) {
+            is Number -> String.format(Locale.US, "%.1f", v.toDouble())
+            is String -> v.toDoubleOrNull()?.let { String.format(Locale.US, "%.1f", it) } ?: ""
+            is JSONObject -> format(v.opt("num")).ifBlank { format(v.opt("value")) }
+            else -> ""
+        }
+        for (key in listOf("rating", "playerRating", "ratingNum")) format(o.opt(key)).takeIf { it.isNotBlank() }?.let { return it }
+        var result = ""
+        walkJson(o, 0, 5) { node ->
+            if (result.isBlank()) {
+                for (key in listOf("rating", "playerRating")) {
+                    val v = format(node.opt(key)); if (v.isNotBlank()) { result = v; break }
+                }
+            }
+        }
+        return result
+    }
+
+    private fun fetchFotMobLineupStatus(matchId: Long, playerId: Int): String {
+        val root = requestObjectAbsolute("https://www.fotmob.com/api/data/matchDetails?matchId=$matchId")
+        val lineup = root.optJSONObject("content")?.optJSONObject("lineup") ?: return "未発表"
+        val lineups = lineup.optJSONArray("lineups") ?: JSONArray()
+        var hasLineup = false
+        for (i in 0 until lineups.length()) {
+            val side = lineups.optJSONObject(i) ?: continue
+            val players = side.optJSONArray("players") ?: JSONArray()
+            if (players.length() > 0) hasLineup = true
+            for (j in 0 until players.length()) {
+                val entry = players.optJSONObject(j) ?: continue
+                val p = entry.optJSONObject("player") ?: entry
+                val id = firstInt(p, "id", "playerId").takeIf { it > 0 } ?: firstInt(entry, "id", "playerId")
+                if (id != playerId) continue
+                val starter = entry.optBoolean("isStarter", !entry.optBoolean("substitute", false))
+                return if (starter) "スタメン" else "ベンチ"
+            }
+        }
+        // Some FotMob payloads expose bench separately.
+        val bench = lineup.optJSONObject("bench")
+        if (bench != null) {
+            val arr = bench.optJSONArray("benchArr") ?: JSONArray()
+            for (i in 0 until arr.length()) {
+                val group = arr.optJSONArray(i) ?: continue
+                for (j in 0 until group.length()) {
+                    val e = group.optJSONObject(j) ?: continue
+                    if (firstInt(e, "id", "playerId") == playerId) return "ベンチ"
+                }
+            }
+        }
+        return if (hasLineup) "ベンチ外" else "未発表"
+    }
+
+    private fun fetchLeagueRoundFotMob(league: FavoriteLeague): LeagueRoundData {
+        val leagueId = resolveFotMobTournamentId(league)
+        if (leagueId <= 0) throw IllegalStateException("FotMob league id unavailable")
+        val root = requestObjectAbsolute("https://www.fotmob.com/api/data/leagues?id=$leagueId&ccode3=JPN")
+        val events = LinkedHashMap<Long, RichEvent>()
+        walkJson(root, 0, 14) { o ->
+            if (o.optJSONObject("home") != null && o.optJSONObject("away") != null) {
+                parseFotMobEvent(o)?.let { if (it.eventId > 0) events[it.eventId] = it }
+            }
+        }
+        val all = events.values.sortedBy { it.startTimestamp }
+        val live = all.filter { it.isLive }
+        val future = all.filter { it.isScheduled }.sortedBy { it.startTimestamp }
+        val past = all.filter { it.isFinished }.sortedByDescending { it.startTimestamp }
+        val seed = live.firstOrNull() ?: future.firstOrNull() ?: past.firstOrNull()
+        val label = seed?.roundLabel.orEmpty()
+        val selected = if (label.isNotBlank()) all.filter { it.roundLabel == label } else (live + future.take(12)).distinctBy { it.eventId }
+        val round = label.filter { it.isDigit() }.toIntOrNull() ?: 0
+        return LeagueRoundData(league.id, leagueId, 0, round, label.ifBlank { "現在の節" }, selected.sortedBy { it.startTimestamp })
+    }
+
+    private fun resolveFotMobTeamId(team: FavoriteTeam): Int {
+        if (team.fotmobId > 0) return team.fotmobId
+        return FixtureRepository.searchTeams(team.name).filter { it.fotmobId > 0 }
+            .maxByOrNull { nameScore(team.name, it.name) }?.fotmobId ?: 0
+    }
+
+    private fun resolveFotMobTournamentId(league: FavoriteLeague): Int {
+        if (league.fotmobId > 0) return league.fotmobId
+        return FixtureRepository.fetchLeagueDirectory().filter { it.fotmobId > 0 }
+            .maxByOrNull { nameScore(league.name, it.name) }?.fotmobId ?: 0
+    }
+
+    private fun parseFotMobEvent(o: JSONObject): RichEvent? {
+        val home = o.optJSONObject("home") ?: return null
+        val away = o.optJSONObject("away") ?: return null
+        val id = when (val v = o.opt("id")) { is Number -> v.toLong(); is String -> v.toLongOrNull() ?: 0L; else -> 0L }
+        if (id <= 0L) return null
+        val status = o.optJSONObject("status") ?: JSONObject()
+        val kickoff = parseFotMobInstant(o) ?: return null
+        val finished = status.optBoolean("finished", false)
+        val started = status.optBoolean("started", false) || status.optString("reason").contains("live", true)
+        val statusType = when { finished -> "finished"; started -> "inprogress"; else -> "scheduled" }
+        val scoreHome = flexibleNullableInt(home.opt("score"))
+        val scoreAway = flexibleNullableInt(away.opt("score"))
+        val league = o.optJSONObject("league")
+        val competition = league?.optString("name").orEmpty()
+            .ifBlank { o.optString("leagueName") }.ifBlank { o.optString("parentLeagueName") }
+        val round = o.optString("roundName").ifBlank { o.optString("leagueRoundName") }
+            .ifBlank { o.optString("tournamentStage") }
+        val liveMinute = extractFotMobLiveMinute(status)
+        val page = o.optString("pageUrl")
+        val url = when {
+            page.startsWith("https://", true) -> page
+            page.startsWith("/") -> "https://www.fotmob.com$page"
+            page.isNotBlank() -> "https://www.fotmob.com/$page"
+            else -> "https://www.fotmob.com/match/$id"
+        }
+        return RichEvent(
+            eventId = id, startTimestamp = kickoff.epochSecond, statusType = statusType,
+            statusDescription = status.optString("reason"),
+            homeName = home.optString("name").ifBlank { home.optString("longName") },
+            awayName = away.optString("name").ifBlank { away.optString("longName") },
+            homeId = firstInt(home, "id", "teamId"), awayId = firstInt(away, "id", "teamId"),
+            homeScore = scoreHome, awayScore = scoreAway, competition = competition,
+            roundLabel = round, slug = "", customId = "", liveMinute = liveMinute,
+            provider = DataSourceManager.FOTMOB, providerUrl = url
+        )
+    }
+
+    private fun parseFotMobInstant(o: JSONObject): Instant? {
+        val values = listOf(
+            o.optJSONObject("status")?.optString("utcTime").orEmpty(),
+            o.optString("utcTime"), o.optString("matchTimeUTCDate")
+        )
+        for (v in values) if (v.isNotBlank()) runCatching { Instant.parse(v) }.getOrNull()?.let { return it }
+        val millis = when (val v = o.opt("timeTS")) { is Number -> v.toLong(); is String -> v.toLongOrNull() ?: 0L; else -> 0L }
+        return when { millis > 10_000_000_000L -> Instant.ofEpochMilli(millis); millis > 0L -> Instant.ofEpochSecond(millis); else -> null }
+    }
+
+    private fun extractFotMobLiveMinute(status: JSONObject): Int {
+        val candidates = mutableListOf<String>()
+        candidates += status.optString("liveTime")
+        candidates += status.optString("reason")
+        val live = status.optJSONObject("liveTime")
+        if (live != null) { candidates += live.optString("short"); candidates += live.optString("long") }
+        for (c in candidates) c.filter { it.isDigit() }.toIntOrNull()?.let { if (it > 0) return it.coerceAtMost(130) }
+        return 0
+    }
+
+    private fun walkJson(node: Any?, depth: Int, maxDepth: Int, block: (JSONObject) -> Unit) {
+        if (node == null || depth > maxDepth) return
+        when (node) {
+            is JSONObject -> {
+                block(node)
+                val keys = node.keys()
+                while (keys.hasNext()) { val k = keys.next(); walkJson(node.opt(k), depth + 1, maxDepth, block) }
+            }
+            is JSONArray -> for (i in 0 until node.length()) walkJson(node.opt(i), depth + 1, maxDepth, block)
+        }
     }
 
     private fun fetchPlayerExtra(player: FavoritePlayer): PlayerExtra {
@@ -397,6 +671,7 @@ object AdvancedStatsRepository {
     }
 
     private fun resolveSofaTournamentId(league: FavoriteLeague): Int {
+        if (league.sofascoreId > 0) return league.sofascoreId
         val encoded = URLEncoder.encode(league.name, StandardCharsets.UTF_8.toString())
         val root = requestObjectAbsolute("https://api.sofascore.com/api/v1/search/all?q=$encoded")
         val a = root.optJSONArray("results") ?: root.optJSONArray("entities") ?: JSONArray()
@@ -539,13 +814,15 @@ object AdvancedStatsRepository {
         put("homeName", e.homeName); put("awayName", e.awayName); put("homeId", e.homeId); put("awayId", e.awayId)
         if (e.homeScore != null) put("homeScore", e.homeScore); if (e.awayScore != null) put("awayScore", e.awayScore)
         put("competition", e.competition); put("roundLabel", e.roundLabel); put("slug", e.slug); put("customId", e.customId); put("liveMinute", e.liveMinute)
+        put("provider", e.provider); put("providerUrl", e.providerUrl)
     }
 
     private fun eventFromJson(o: JSONObject): RichEvent = RichEvent(
         o.optLong("eventId"), o.optLong("startTimestamp"), o.optString("statusType"), o.optString("statusDescription"),
         o.optString("homeName"), o.optString("awayName"), o.optInt("homeId"), o.optInt("awayId"),
         if (o.has("homeScore")) o.optInt("homeScore") else null, if (o.has("awayScore")) o.optInt("awayScore") else null,
-        o.optString("competition"), o.optString("roundLabel"), o.optString("slug"), o.optString("customId"), o.optInt("liveMinute")
+        o.optString("competition"), o.optString("roundLabel"), o.optString("slug"), o.optString("customId"), o.optInt("liveMinute"),
+        o.optString("provider").ifBlank { DataSourceManager.SOFASCORE }, o.optString("providerUrl")
     )
 
     private fun performanceToJson(p: PlayerPerformance): JSONObject = JSONObject().apply {

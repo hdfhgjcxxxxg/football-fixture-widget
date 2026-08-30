@@ -7,6 +7,7 @@ class MatchDayApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         appContext = applicationContext
+        RuntimeCrashStore.install(applicationContext)
     }
 
     companion object {

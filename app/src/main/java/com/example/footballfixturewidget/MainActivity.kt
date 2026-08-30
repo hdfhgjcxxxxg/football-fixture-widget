@@ -80,22 +80,54 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        DynamicColors.applyToActivityIfAvailable(this)
-        setContentView(R.layout.activity_main)
 
-        bindViews()
-        selectedColor = FixtureRepository.getWidgetColor(this)
-        setupTapTarget()
-        setupColorControls()
-        setupPopularTeams()
-        setupIconChoices()
-        setupUpdateControls()
-        setupActions()
-        refreshFavoritesUi()
-        refreshPlayerFavoritesUi()
-        refreshLeagueFavoritesUi()
-        migrateAndLoadLeagues()
-        requestNotificationPermissionIfNeeded()
+        // v11.10: keep launcher startup resilient. Network/API initialization is
+        // deliberately deferred until the user taps "接続を確認" so a transport
+        // problem can never crash the app during launch.
+        runCatching { DynamicColors.applyToActivityIfAvailable(this) }
+        runCatching { setContentView(R.layout.activity_main) }
+            .onFailure {
+                RuntimeCrashStore.record(this, "setContentView", it)
+                showFatalStartupScreen("画面の初期化に失敗しました", it)
+                return
+            }
+
+        try {
+            bindViews()
+            selectedColor = FixtureRepository.getWidgetColor(this)
+            setupTapTarget()
+            setupColorControls()
+            setupPopularTeams()
+            setupIconChoices()
+            setupUpdateControls()
+            setupActions()
+            refreshFavoritesUi()
+            refreshPlayerFavoritesUi()
+            refreshLeagueFavoritesUi()
+
+            // No automatic SofaScore request here. This is the key safe-start change.
+            apiBadge.text = "待機中"
+            apiStatus.text = "「接続を確認」を押すとSofaScoreへ接続します"
+            setBusy(false)
+        } catch (t: Throwable) {
+            RuntimeCrashStore.record(this, "MainActivity.onCreate", t)
+            showFatalStartupScreen("起動処理でエラーが発生しました", t)
+        }
+    }
+
+    private fun showFatalStartupScreen(title: String, error: Throwable) {
+        val message = buildString {
+            append(title)
+            append("\n\n")
+            append(error.javaClass.simpleName)
+            error.message?.takeIf { it.isNotBlank() }?.let { append(": " + it) }
+            append("\n\n次回起動時にクラッシュレポート画面から共有できます。")
+        }
+        setContentView(TextView(this).apply {
+            text = message
+            textSize = 18f
+            setPadding(dp(24), dp(48), dp(24), dp(24))
+        })
     }
 
     private fun bindViews() {
@@ -278,8 +310,9 @@ class MainActivity : AppCompatActivity() {
         checkUpdateButton.setOnClickListener { checkForUpdateManually() }
 
         if (autoUpdateSwitch.isChecked) {
-            UpdateManager.schedule(this)
-            UpdateManager.checkAsync(this, manual = false)
+            // Schedule the periodic check, but do not make a network request during
+            // Activity startup. This prevents updater/network failures from affecting launch.
+            runCatching { UpdateManager.schedule(this) }
         }
     }
 

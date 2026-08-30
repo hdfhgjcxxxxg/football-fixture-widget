@@ -22,3 +22,11 @@ v11.2: nullable Int build fix + automatic share sheet on build failure
 - Uses the official SofaScore API with Android's platform HttpEngine (Chromium network stack) on Android 14+, with `HttpURLConnection` fallback on older versions.
 - Retries the SofaScore www API path only as a compatibility fallback.
 - Keeps public GitHub Release auto-publish, fixed signing, and automatic error-log sharing.
+
+## v11.10 Safe Startup / Runtime Crash Recovery
+
+- Launcher now goes through `SafeLauncherActivity`.
+- Runtime crashes are recorded by `RuntimeCrashStore` and shown on the next launch instead of looping forever.
+- SofaScore/network initialization is deferred until the user taps 「接続を確認」.
+- Automatic update checks no longer perform network I/O during Activity startup; only the periodic alarm is scheduled.
+- MainActivity startup steps are guarded so an initialization error is shown as an error screen and stored as a runtime crash report.

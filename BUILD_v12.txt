@@ -1,21 +1,11 @@
-FootballFixtureWidget v12.0
+MatchDay Widget v12.1
 
-Dual data-source release:
-- Adds global data source selector: Both (auto merge), FotMob, SofaScore.
-- Both mode queries both providers, merges team/player/league IDs when names match, and falls back to the working provider if one fails.
-- FotMob strict mode avoids SofaScore data calls except optional external-link resolution requested by the user.
-- SofaScore strict mode avoids FotMob data calls except optional external-link resolution requested by the user.
-- Favorites store FotMob and SofaScore IDs whenever both can be resolved.
-- FotMob routes use /api/data/search/suggest, /api/data/allLeagues, /api/data/teams, /api/data/leagues, /api/data/playerData, /api/data/matchDetails, and /api/data/matches.
-- SofaScore league discovery prefers /config/unique-tournaments/en/football, with compatibility fallbacks.
+Data source selector:
+- 結合 (FotMob + SofaScore)
+- SofaScore
+- FotMob
 
-Preserved:
-- Separate team/player/league widgets and per-widget selections
-- Unlimited favorites
-- Advanced team/player/league widget stats
-- Countdown minute/second toggle
-- Safe startup and runtime crash recovery
-- Fixed signing
-- Public GitHub repository workflow
-- Verified APK build and GitHub Release auto-publish
-- Build failure full log + summary + ChatGPT share flow
+The selector uses an unfiltered AutoCompleteTextView adapter so all three choices are always visible even after one option has already been selected.
+
+versionCode: 2000000017
+versionName: 12.1

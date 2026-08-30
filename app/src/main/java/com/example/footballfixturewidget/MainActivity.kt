@@ -12,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.ArrayAdapter
+import android.widget.Filter
 import android.widget.AutoCompleteTextView
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -166,12 +167,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupDataSource() {
-        val labels = listOf("両方（自動統合）", "FotMob", "SofaScore")
-        val modes = listOf(DataSourceManager.AUTO_BOTH, DataSourceManager.FOTMOB, DataSourceManager.SOFASCORE)
-        dataSourceDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, labels))
+        // AutoCompleteTextView normally filters its adapter using the currently displayed text.
+        // That caused the source menu to show only the selected item ("両方（自動統合）").
+        // Use an unfiltered adapter so all three choices are always visible.
+        val choices = listOf(
+            "結合" to DataSourceManager.AUTO_BOTH,
+            "SofaScore" to DataSourceManager.SOFASCORE,
+            "FotMob" to DataSourceManager.FOTMOB
+        )
+        val labels = choices.map { it.first }
+        val modes = choices.map { it.second }
+        dataSourceDropdown.threshold = 0
+        dataSourceDropdown.setAdapter(createUnfilteredAdapter(labels))
         val currentMode = DataSourceManager.getMode(this)
         val index = modes.indexOf(currentMode).coerceAtLeast(0)
         dataSourceDropdown.setText(labels[index], false)
+        dataSourceDropdown.setOnClickListener { dataSourceDropdown.showDropDown() }
         dataSourceDropdown.setOnItemClickListener { _, _, position, _ ->
             val mode = modes.getOrElse(position) { DataSourceManager.AUTO_BOTH }
             DataSourceManager.setMode(this, mode)
@@ -183,6 +194,32 @@ class MainActivity : AppCompatActivity() {
             leagueOptions = emptyList()
             leagueDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, emptyList<String>()))
             favoriteLeagueDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, emptyList<String>()))
+        }
+    }
+
+    private fun createUnfilteredAdapter(items: List<String>): ArrayAdapter<String> {
+        val allItems = items.toList()
+        return object : ArrayAdapter<String>(
+            this,
+            android.R.layout.simple_dropdown_item_1line,
+            allItems.toMutableList()
+        ) {
+            private val unfiltered = object : Filter() {
+                override fun performFiltering(constraint: CharSequence?): FilterResults {
+                    return FilterResults().apply {
+                        values = allItems
+                        count = allItems.size
+                    }
+                }
+
+                override fun publishResults(constraint: CharSequence?, results: FilterResults?) {
+                    clear()
+                    addAll(allItems)
+                    notifyDataSetChanged()
+                }
+            }
+
+            override fun getFilter(): Filter = unfiltered
         }
     }
 

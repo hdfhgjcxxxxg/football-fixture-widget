@@ -38,7 +38,7 @@ object DataSourceManager {
     fun label(mode: String): String = when (mode) {
         FOTMOB -> "FotMob"
         SOFASCORE -> "SofaScore"
-        else -> "FotMob + SofaScore"
+        else -> "結合"
     }
 
     fun label(context: Context): String = label(getMode(context))

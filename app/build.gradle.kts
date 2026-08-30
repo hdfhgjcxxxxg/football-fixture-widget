@@ -10,8 +10,8 @@ android {
         applicationId = "com.example.footballfixturewidget"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2000000016
-        versionName = "12.0"
+        versionCode = 2000000017
+        versionName = "12.1"
     }
 
     val signingStoreFile = System.getenv("SIGNING_STORE_FILE")

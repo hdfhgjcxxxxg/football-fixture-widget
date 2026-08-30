@@ -80,7 +80,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
-                    android:text="APIキー不要 • FotMob + SofaScore"
+                    android:text="APIキー不要 • 結合 / SofaScore / FotMob"
                     android:textAppearance="?attr/textAppearanceBodyLarge"
                     android:textColor="?attr/colorOnSurfaceVariant" />
 
@@ -103,7 +103,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:text="両方では2サービスを照合し、片方が失敗してももう片方へ自動フォールバックします。"
+                    android:text="結合ではFotMobとSofaScoreを照合します。SofaScoreまたはFotMobだけを使うこともできます。"
                     android:textAppearance="?attr/textAppearanceBodySmall"
                     android:textColor="?attr/colorOnSurfaceVariant" />
 

@@ -1,0 +1,4 @@
+v12.1
+- Data source selector: 結合 / SofaScore / FotMob
+- Unfiltered dropdown so all three options always appear
+- versionCode 2000000017

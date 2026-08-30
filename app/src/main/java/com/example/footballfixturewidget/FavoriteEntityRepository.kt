@@ -378,34 +378,55 @@ object FavoriteEntityRepository {
     }
 
     private fun requestAny(endpoint: String): Any {
-        val sofa = endpoint.contains("sofascore", true)
-        val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = 7000
-            readTimeout = 11000
-            instanceFollowRedirects = true
-            setRequestProperty("Accept", "application/json,text/plain,*/*")
-            setRequestProperty("Accept-Language", "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7")
-            setRequestProperty("Referer", if (sofa) "https://www.sofascore.com/" else "https://www.fotmob.com/")
-            setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/140 Mobile Safari/537.36")
-            if (endpoint.contains("sofascore", true)) {
-                setRequestProperty("X-Requested-With", "XMLHttpRequest")
-                setRequestProperty("Cache-Control", "no-cache")
-                setRequestProperty("Pragma", "no-cache")
-                setRequestProperty("Sec-Fetch-Site", "same-origin")
-                setRequestProperty("Sec-Fetch-Mode", "cors")
-                setRequestProperty("Sec-Fetch-Dest", "empty")
+        val candidates = sofaScoreCandidates(endpoint)
+        var last: Throwable? = null
+        for (candidate in candidates) {
+            val sofa = candidate.contains("sofascore", true)
+            val connection = (URL(candidate).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 7000
+                readTimeout = 11000
+                instanceFollowRedirects = true
+                setRequestProperty("Accept", "application/json,text/plain,*/*")
+                setRequestProperty("Accept-Language", "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7")
+                setRequestProperty("Referer", if (sofa) "https://www.sofascore.com/" else "https://www.fotmob.com/")
+                setRequestProperty("Origin", if (sofa) "https://www.sofascore.com" else "https://www.fotmob.com")
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/140 Mobile Safari/537.36")
+                if (sofa) {
+                    setRequestProperty("X-Requested-With", "XMLHttpRequest")
+                    setRequestProperty("Cache-Control", "no-cache")
+                    setRequestProperty("Pragma", "no-cache")
+                }
+            }
+            try {
+                val code = connection.responseCode
+                val body = (if (code in 200..299) connection.inputStream else connection.errorStream)
+                    ?.bufferedReader()?.use { it.readText() }.orEmpty()
+                if (code !in 200..299) throw IllegalStateException("${URL(candidate).host}: HTTP $code")
+                if (body.isBlank()) throw IllegalStateException("${URL(candidate).host}: empty response")
+                return JSONTokener(body).nextValue()
+            } catch (t: Throwable) {
+                last = t
+            } finally {
+                connection.disconnect()
             }
         }
-        try {
-            val code = connection.responseCode
-            val body = (if (code in 200..299) connection.inputStream else connection.errorStream)
-                ?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (code !in 200..299) throw IllegalStateException("HTTP $code")
-            return JSONTokener(body).nextValue()
-        } finally {
-            connection.disconnect()
+        throw last ?: IllegalStateException("データを取得できませんでした")
+    }
+
+    private fun sofaScoreCandidates(endpoint: String): List<String> {
+        if (!endpoint.contains("sofascore", true)) return listOf(endpoint)
+        val path = when {
+            endpoint.startsWith("https://api.sofascore.com") -> endpoint.removePrefix("https://api.sofascore.com")
+            endpoint.startsWith("https://api.sofascore.app") -> endpoint.removePrefix("https://api.sofascore.app")
+            endpoint.startsWith("https://www.sofascore.com/api/v1") -> "/api/v1" + endpoint.removePrefix("https://www.sofascore.com/api/v1")
+            else -> return listOf(endpoint)
         }
+        return listOf(
+            "https://api.sofascore.app$path",
+            "https://api.sofascore.com$path",
+            "https://www.sofascore.com$path"
+        ).distinct()
     }
 
     private fun firstPositiveInt(obj: JSONObject, vararg keys: String): Int {

@@ -157,42 +157,48 @@ object ExternalMatchResolver {
     }
 
     private fun requestJson(url: String): JSONObject {
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = 6500
-            readTimeout = 9000
-            instanceFollowRedirects = true
-            setRequestProperty("Accept", "application/json,text/plain,*/*")
-            setRequestProperty("Accept-Language", "ja,en-US;q=0.8,en;q=0.7")
-            setRequestProperty("Referer", when {
-                url.contains("sofascore") -> "https://www.sofascore.com/"
-                else -> "https://www.fotmob.com/"
-            })
-            setRequestProperty("Origin", when {
-                url.contains("sofascore") -> "https://www.sofascore.com"
-                else -> "https://www.fotmob.com"
-            })
-            setRequestProperty(
-                "User-Agent",
-                "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36"
-            )
-            if (url.contains("sofascore", true)) {
-                setRequestProperty("X-Requested-With", "XMLHttpRequest")
-                setRequestProperty("Cache-Control", "no-cache")
-                setRequestProperty("Pragma", "no-cache")
-                setRequestProperty("Sec-Fetch-Site", "same-origin")
-                setRequestProperty("Sec-Fetch-Mode", "cors")
-                setRequestProperty("Sec-Fetch-Dest", "empty")
+        val apiPath = when {
+            url.startsWith("https://api.sofascore.com") -> url.removePrefix("https://api.sofascore.com")
+            url.startsWith("https://api.sofascore.app") -> url.removePrefix("https://api.sofascore.app")
+            url.startsWith("https://www.sofascore.com/api/v1") -> "/api/v1" + url.removePrefix("https://www.sofascore.com/api/v1")
+            else -> null
+        }
+        val candidates = if (apiPath != null) listOf(
+            "https://api.sofascore.app$apiPath",
+            "https://api.sofascore.com$apiPath",
+            "https://www.sofascore.com$apiPath"
+        ).distinct() else listOf(url)
+        var last: Throwable? = null
+        for (candidate in candidates) {
+            val connection = (URL(candidate).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 6500
+                readTimeout = 9000
+                instanceFollowRedirects = true
+                setRequestProperty("Accept", "application/json,text/plain,*/*")
+                setRequestProperty("Accept-Language", "ja,en-US;q=0.8,en;q=0.7")
+                setRequestProperty("Referer", if (candidate.contains("sofascore")) "https://www.sofascore.com/" else "https://www.fotmob.com/")
+                setRequestProperty("Origin", if (candidate.contains("sofascore")) "https://www.sofascore.com" else "https://www.fotmob.com")
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36")
+                if (candidate.contains("sofascore", true)) {
+                    setRequestProperty("X-Requested-With", "XMLHttpRequest")
+                    setRequestProperty("Cache-Control", "no-cache")
+                    setRequestProperty("Pragma", "no-cache")
+                }
+            }
+            try {
+                val code = connection.responseCode
+                val body = (if (code in 200..299) connection.inputStream else connection.errorStream)
+                    ?.bufferedReader()?.use { it.readText() }.orEmpty()
+                if (code !in 200..299) throw IllegalStateException("${URL(candidate).host}: HTTP $code")
+                return JSONObject(body)
+            } catch (t: Throwable) {
+                last = t
+            } finally {
+                connection.disconnect()
             }
         }
-        try {
-            val code = connection.responseCode
-            if (code !in 200..299) throw IllegalStateException("HTTP $code")
-            val body = connection.inputStream.bufferedReader().use { it.readText() }
-            return JSONObject(body)
-        } finally {
-            connection.disconnect()
-        }
+        throw last ?: IllegalStateException("SofaScoreデータを取得できませんでした")
     }
 
     private fun exactFotMobLegacyUrl(candidate: Candidate): String {

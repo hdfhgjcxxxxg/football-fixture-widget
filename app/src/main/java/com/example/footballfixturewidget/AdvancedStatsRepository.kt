@@ -479,15 +479,20 @@ object AdvancedStatsRepository {
         return mins.coerceAtMost(130)
     }
 
-    private fun requestObject(path: String): JSONObject = requestObjectAbsolute("https://api.sofascore.com/api/v1$path")
+    private fun requestObject(path: String): JSONObject = requestObjectAbsolute("https://api.sofascore.app/api/v1$path")
 
     private fun requestObjectAbsolute(url: String): JSONObject {
-        val candidates = buildList {
-            if (url.contains("api.sofascore.com", true)) {
-                add(url.replace("https://api.sofascore.com", "https://www.sofascore.com"))
-            }
-            add(url)
-        }.distinct()
+        val apiPath = when {
+            url.startsWith("https://api.sofascore.com") -> url.removePrefix("https://api.sofascore.com")
+            url.startsWith("https://api.sofascore.app") -> url.removePrefix("https://api.sofascore.app")
+            url.startsWith("https://www.sofascore.com/api/v1") -> "/api/v1" + url.removePrefix("https://www.sofascore.com/api/v1")
+            else -> null
+        }
+        val candidates = if (apiPath != null) listOf(
+            "https://api.sofascore.app$apiPath",
+            "https://api.sofascore.com$apiPath",
+            "https://www.sofascore.com$apiPath"
+        ).distinct() else listOf(url)
         var last: Throwable? = null
         for (candidate in candidates) {
             val conn = (URL(candidate).openConnection() as HttpURLConnection).apply {

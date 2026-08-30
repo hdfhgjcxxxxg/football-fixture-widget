@@ -172,59 +172,30 @@ object FixtureRepository {
     }
 
     private fun requestAny(endpoint: String, referer: String? = null): Any {
-        val candidates = sofaScoreCandidates(endpoint)
-        var last: Throwable? = null
-        for (candidate in candidates) {
-            val isSofa = candidate.contains("sofascore", ignoreCase = true)
-            val ref = referer ?: if (isSofa) "https://www.sofascore.com/" else "https://www.fotmob.com/"
-            val connection = (URL(candidate).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 7000
-                readTimeout = 11000
-                instanceFollowRedirects = true
-                setRequestProperty("Accept", "application/json,text/plain,*/*")
-                setRequestProperty("Accept-Language", "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7")
-                setRequestProperty("Referer", ref)
-                setRequestProperty("Origin", ref.trimEnd('/'))
-                setRequestProperty(
-                    "User-Agent",
-                    "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36"
-                )
-                if (isSofa) {
-                    setRequestProperty("X-Requested-With", "XMLHttpRequest")
-                    setRequestProperty("Cache-Control", "no-cache")
-                    setRequestProperty("Pragma", "no-cache")
-                }
-            }
-            try {
-                val code = connection.responseCode
-                val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-                val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                if (code !in 200..299) throw IllegalStateException("${URL(candidate).host}: HTTP $code")
-                if (body.isBlank()) throw IllegalStateException("${URL(candidate).host}: 空のレスポンス")
-                return JSONTokener(body).nextValue()
-            } catch (t: Throwable) {
-                last = t
-            } finally {
-                connection.disconnect()
-            }
+        if (endpoint.contains("sofascore", ignoreCase = true)) {
+            return SofaScoreHttp.getAny(endpoint)
         }
-        throw last ?: IllegalStateException("データを取得できませんでした")
-    }
 
-    private fun sofaScoreCandidates(endpoint: String): List<String> {
-        if (!endpoint.contains("sofascore", ignoreCase = true)) return listOf(endpoint)
-        val path = when {
-            endpoint.startsWith("https://api.sofascore.com") -> endpoint.removePrefix("https://api.sofascore.com")
-            endpoint.startsWith("https://api.sofascore.app") -> endpoint.removePrefix("https://api.sofascore.app")
-            endpoint.startsWith("https://www.sofascore.com/api/v1") -> "/api/v1" + endpoint.removePrefix("https://www.sofascore.com/api/v1")
-            else -> return listOf(endpoint)
+        val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 7000
+            readTimeout = 11000
+            instanceFollowRedirects = true
+            setRequestProperty("Accept", "application/json,text/plain,*/*")
+            setRequestProperty("Accept-Language", "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7")
+            setRequestProperty("Referer", referer ?: "https://www.fotmob.com/")
+            setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36")
         }
-        return listOf(
-            "https://api.sofascore.app$path",
-            "https://api.sofascore.com$path",
-            "https://www.sofascore.com$path"
-        ).distinct()
+        try {
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (code !in 200..299) throw IllegalStateException("${URL(endpoint).host}: HTTP $code")
+            if (body.isBlank()) throw IllegalStateException("${URL(endpoint).host}: 空のレスポンス")
+            return JSONTokener(body).nextValue()
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun requestObjectWithFallback(vararg urls: String): JSONObject {
@@ -242,9 +213,8 @@ object FixtureRepository {
 
     fun fetchLeagueDirectory(): List<LeagueInfo> {
         val root = requestObjectWithFallback(
-            // Mirror first: the primary host can return 403 to Android/Java TLS fingerprints.
-            "https://api.sofascore.app/api/v1/sport/football/unique-tournaments",
-            // Current SofaScore football tournament directory.
+            // Official SofaScore API. v11.8 sends these requests through Cronet
+            // instead of HttpURLConnection to avoid Java/Android TLS fingerprint blocks.
             "https://api.sofascore.com/api/v1/sport/football/unique-tournaments",
             "https://www.sofascore.com/api/v1/sport/football/unique-tournaments",
             // Legacy configuration routes are kept only as fallbacks because

@@ -12,29 +12,17 @@ object TeamLogoLoader {
     private const val MAX_AGE_MS = 7L * 24L * 60L * 60L * 1000L
 
     fun load(context: Context, teamId: Int): Bitmap? {
-        if (teamId == 0) return null
-        val cacheKey = if (teamId > 0) "fm_$teamId" else "ss_${-teamId}"
-        val urls = if (teamId > 0) {
-            listOf(
-                "https://images.fotmob.com/image_resources/logo/teamlogo/$teamId.png",
-                "https://images.fotmob.com/image_resources/logo/teamlogo/${teamId}_small.png"
-            )
-        } else {
-            val id = -teamId
-            listOf("https://img.sofascore.com/api/v1/team/$id/image")
-        }
-        return loadFromUrls(context, cacheKey, urls)
+        if (teamId >= 0) return null
+        val id = -teamId
+        return loadFromUrls(context, "ss_$id", listOf("https://img.sofascore.com/api/v1/team/$id/image"))
     }
 
     fun load(context: Context, team: FavoriteTeam): Bitmap? {
-        val urls = buildList {
-            if (team.fotmobId > 0) {
-                add("https://images.fotmob.com/image_resources/logo/teamlogo/${team.fotmobId}.png")
-                add("https://images.fotmob.com/image_resources/logo/teamlogo/${team.fotmobId}_small.png")
-            }
-            if (team.sofascoreId > 0) add("https://img.sofascore.com/api/v1/team/${team.sofascoreId}/image")
-        }
-        return loadFromUrls(context, "fav_${team.id}", urls)
+        val sofaId = if (team.sofascoreId > 0) team.sofascoreId else runCatching {
+            FixtureRepository.searchTeams(team.name).firstOrNull()?.sofascoreId ?: 0
+        }.getOrDefault(0)
+        if (sofaId <= 0) return null
+        return loadFromUrls(context, "ss_$sofaId", listOf("https://img.sofascore.com/api/v1/team/$sofaId/image"))
     }
 
     private fun loadFromUrls(context: Context, cacheKey: String, urls: List<String>): Bitmap? {
@@ -53,13 +41,12 @@ object TeamLogoLoader {
     }
 
     private fun download(url: String): Bitmap? {
-        val sofa = url.contains("sofascore", true)
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 3500
             readTimeout = 5000
             instanceFollowRedirects = true
             setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/140 Mobile Safari/537.36")
-            setRequestProperty("Referer", if (sofa) "https://www.sofascore.com/" else "https://www.fotmob.com/")
+            setRequestProperty("Referer", "https://www.sofascore.com/")
         }
         try {
             if (connection.responseCode !in 200..299) return null

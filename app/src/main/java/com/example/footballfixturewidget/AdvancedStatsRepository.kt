@@ -14,9 +14,7 @@ import kotlin.math.max
 
 /**
  * Rich, best-effort data used by v11 widgets.
- * SofaScore is the primary source for lineups/player ratings/rounds because its
- * public web JSON exposes those objects directly. FotMob remains the primary
- * source used by FixtureRepository for fixture discovery.
+ * SofaScore is the single data source for fixtures, lineups, player ratings and league rounds.
  */
 data class RichEvent(
     val eventId: Long,

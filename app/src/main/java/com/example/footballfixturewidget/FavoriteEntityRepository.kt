@@ -22,12 +22,7 @@ data class FavoritePlayer(
     val position: String = ""
 ) {
     val sourceLabel: String
-        get() = when {
-            fotmobId > 0 && sofascoreId > 0 -> "FotMob + SofaScore"
-            fotmobId > 0 -> "FotMob"
-            sofascoreId > 0 -> "SofaScore"
-            else -> "Football"
-        }
+        get() = "SofaScore"
 }
 
 data class FavoriteLeague(
@@ -48,7 +43,7 @@ object FavoriteEntityRepository {
     private const val KEY_PLAYERS = "favorite_players"
     private const val KEY_LEAGUES = "favorite_leagues"
 
-    // v11: お気に入り数に固定上限を設けない。
+    // 保存件数に固定上限は設けない（UIには件数上限を表示しない）。
     const val MAX_PLAYERS = Int.MAX_VALUE
     const val MAX_LEAGUES = Int.MAX_VALUE
 
@@ -163,16 +158,8 @@ object FavoriteEntityRepository {
     fun searchPlayers(term: String): List<FavoritePlayer> {
         val clean = term.trim()
         if (clean.length < 2) return emptyList()
-        val fotmob = runCatching { searchFotMobPlayers(clean) }.getOrDefault(emptyList())
-        val sofa = runCatching { searchSofaPlayers(clean) }.getOrDefault(emptyList())
-        val merged = LinkedHashMap<String, FavoritePlayer>()
-        (fotmob + sofa).forEach { p ->
-            val key = playerKey(p.name, p.teamName)
-            val old = merged[key]
-            merged[key] = if (old == null) p else mergePlayer(old, p)
-        }
         val q = normalize(clean)
-        return merged.values.sortedWith(
+        return searchSofaPlayers(clean).sortedWith(
             compareByDescending<FavoritePlayer> {
                 val n = normalize(it.name)
                 when {
@@ -284,52 +271,74 @@ object FavoriteEntityRepository {
 
     /** Fill missing team information so a player's widget can show the next club match. */
     fun hydratePlayerTeam(player: FavoritePlayer): FavoritePlayer {
-        if (player.fotmobTeamId > 0 || player.sofascoreTeamId > 0) return player
-        if (player.fotmobId > 0) {
-            val p = runCatching {
-                val root = requestObject("https://www.fotmob.com/api/data/playerData?id=${player.fotmobId}&includeMarketValues=true")
-                var teamId = 0
-                var teamName = ""
-                fun consider(o: JSONObject?) {
-                    if (o == null || teamId > 0) return
-                    val id = firstPositiveInt(o, "teamId", "id")
-                    val name = o.optString("teamName").ifBlank { o.optString("name") }
-                    if (id > 0 && name.isNotBlank()) {
-                        teamId = id
-                        teamName = name
-                    }
+        var resolved = player
+        if (resolved.sofascoreId <= 0) {
+            val candidate = runCatching {
+                searchSofaPlayers(player.name).maxByOrNull {
+                    val nameMatch = if (it.name.equals(player.name, true)) 2 else 1
+                    val teamMatch = if (player.teamName.isNotBlank() && it.teamName.equals(player.teamName, true)) 2 else 0
+                    nameMatch + teamMatch
                 }
-                consider(root.optJSONObject("primaryTeam"))
-                consider(root.optJSONObject("team"))
-                root.optJSONArray("teams")?.let { a -> for (i in 0 until a.length()) consider(a.optJSONObject(i)) }
-                if (teamId > 0) player.copy(teamName = player.teamName.ifBlank { teamName }, fotmobTeamId = teamId) else player
             }.getOrNull()
-            if (p != null && p.fotmobTeamId > 0) return p
-        }
-        if (player.sofascoreId > 0) {
-            val p = runCatching {
-                val root = requestObject(
-                    "https://api.sofascore.com/api/v1/player/${player.sofascoreId}",
-                    "https://www.sofascore.com/api/v1/player/${player.sofascoreId}"
+            if (candidate != null) {
+                resolved = resolved.copy(
+                    sofascoreId = candidate.sofascoreId,
+                    sofascoreTeamId = candidate.sofascoreTeamId,
+                    teamName = resolved.teamName.ifBlank { candidate.teamName },
+                    position = resolved.position.ifBlank { candidate.position }
                 )
-                val e = root.optJSONObject("player") ?: root
-                val team = e.optJSONObject("team")
-                val teamId = team?.let { firstPositiveInt(it, "id", "teamId") } ?: 0
-                val teamName = team?.optString("name").orEmpty()
-                if (teamId > 0) player.copy(teamName = player.teamName.ifBlank { teamName }, sofascoreTeamId = teamId) else player
-            }.getOrNull()
-            if (p != null) return p
+            }
         }
-        return player
+        if (resolved.sofascoreId <= 0) return resolved
+        return runCatching {
+            val root = requestObject(
+                "https://api.sofascore.com/api/v1/player/${resolved.sofascoreId}",
+                "https://www.sofascore.com/api/v1/player/${resolved.sofascoreId}"
+            )
+            val e = root.optJSONObject("player") ?: root
+            val team = e.optJSONObject("team")
+            val teamId = team?.let { firstPositiveInt(it, "id", "teamId") } ?: resolved.sofascoreTeamId
+            val teamName = team?.optString("name").orEmpty()
+            resolved.copy(
+                teamName = resolved.teamName.ifBlank { teamName },
+                sofascoreTeamId = if (teamId > 0) teamId else resolved.sofascoreTeamId
+            )
+        }.getOrDefault(resolved)
+    }
+
+
+    fun resolveSofaLeagueId(league: FavoriteLeague): Int {
+        val encoded = URLEncoder.encode(league.name, StandardCharsets.UTF_8.toString())
+        val root = requestObject(
+            "https://api.sofascore.com/api/v1/search/all?q=$encoded",
+            "https://www.sofascore.com/api/v1/search/all?q=$encoded"
+        )
+        val results = root.optJSONArray("results") ?: root.optJSONArray("entities") ?: JSONArray()
+        val q = normalize(league.name)
+        var bestId = 0
+        var bestScore = -1
+        for (i in 0 until results.length()) {
+            val wrapper = results.optJSONObject(i) ?: continue
+            val type = wrapper.optString("type").lowercase(Locale.ROOT)
+            val e = wrapper.optJSONObject("entity") ?: wrapper
+            val effectiveType = type.ifBlank { e.optString("type").lowercase(Locale.ROOT) }
+            if (effectiveType !in setOf("uniquetournament", "unique_tournament", "tournament", "league")) continue
+            val id = firstPositiveInt(e, "id")
+            val name = e.optString("name")
+            if (id <= 0 || name.isBlank()) continue
+            val n = normalize(name)
+            val score = when { n == q -> 100; n.startsWith(q) || q.startsWith(n) -> 90; n.contains(q) || q.contains(n) -> 80; else -> 0 }
+            if (score > bestScore) { bestScore = score; bestId = id }
+        }
+        return if (bestId > 0) bestId else league.id
     }
 
     fun playerImageUrls(player: FavoritePlayer): List<String> = buildList {
-        if (player.fotmobId > 0) add("https://images.fotmob.com/image_resources/playerimages/${player.fotmobId}.png")
         if (player.sofascoreId > 0) add("https://img.sofascore.com/api/v1/player/${player.sofascoreId}/image")
     }
 
     fun leagueImageUrls(league: FavoriteLeague): List<String> = listOf(
-        "https://images.fotmob.com/image_resources/logo/leaguelogo/${league.id}.png"
+        "https://img.sofascore.com/api/v1/unique-tournament/${league.id}/image"
     )
 
     private fun mergePlayer(a: FavoritePlayer, b: FavoritePlayer): FavoritePlayer {

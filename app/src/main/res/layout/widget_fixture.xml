@@ -37,7 +37,7 @@
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
                 android:maxLines="1"
-                android:text="お気に入り 0件 • 上限なし"
+                android:text="お気に入り"
                 android:textSize="10sp" />
         </LinearLayout>
 

@@ -15,10 +15,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-/**
- * One favorite team. v9 can keep IDs from both providers.
- * id is the stable local key: FotMob ID when available, otherwise -SofaScore ID.
- */
+/** Favorite team. Legacy provider IDs are retained only for migration compatibility. */
 data class FavoriteTeam(
     val id: Int,
     val name: String,
@@ -27,12 +24,7 @@ data class FavoriteTeam(
     val country: String = ""
 ) {
     val sourceLabel: String
-        get() = when {
-            fotmobId > 0 && sofascoreId > 0 -> "FotMob + SofaScore"
-            fotmobId > 0 -> "FotMob"
-            sofascoreId > 0 -> "SofaScore"
-            else -> "Football"
-        }
+        get() = "SofaScore"
 }
 
 data class LeagueInfo(
@@ -79,7 +71,7 @@ object FixtureRepository {
     private const val KEY_SOURCE_VERSION = "data_source_version"
     private const val SOURCE_VERSION_MULTI_PROVIDER = 3
 
-    // v11: お気に入りチーム数は上限なし。
+    // 保存件数に固定上限は設けない（UIには件数上限を表示しない）。
     const val MAX_FAVORITES = Int.MAX_VALUE
     const val DEFAULT_WIDGET_COLOR = 0xFF15171C.toInt()
 
@@ -96,7 +88,10 @@ object FixtureRepository {
 
     fun getWidgetColor(context: Context): Int = prefs(context).getInt(KEY_WIDGET_COLOR, DEFAULT_WIDGET_COLOR)
     fun saveWidgetColor(context: Context, color: Int) = prefs(context).edit().putInt(KEY_WIDGET_COLOR, color).apply()
-    fun getTapTarget(context: Context): String = prefs(context).getString(KEY_TAP_TARGET, TAP_FOTMOB) ?: TAP_FOTMOB
+    fun getTapTarget(context: Context): String {
+        val saved = prefs(context).getString(KEY_TAP_TARGET, TAP_SOFASCORE) ?: TAP_SOFASCORE
+        return if (saved == TAP_FOTMOB) TAP_SOFASCORE else saved
+    }
     fun saveTapTarget(context: Context, value: String) = prefs(context).edit().putString(KEY_TAP_TARGET, value).apply()
 
     fun getFavoriteTeams(context: Context): List<FavoriteTeam> {
@@ -220,130 +215,91 @@ object FixtureRepository {
 
     fun fetchLeagueDirectory(): List<LeagueInfo> {
         val root = requestObjectWithFallback(
-            "https://www.fotmob.com/api/data/allLeagues?locale=en&country=JPN",
-            "https://www.fotmob.com/api/allLeagues"
+            "https://api.sofascore.com/api/v1/config/unique-tournaments/en/football",
+            "https://www.sofascore.com/api/v1/config/unique-tournaments/en/football"
         )
+        val tournaments = root.optJSONArray("uniqueTournaments") ?: JSONArray()
         val ordered = LinkedHashMap<Int, LeagueInfo>()
-
-        fun addLeague(obj: JSONObject, country: String = "", ccode: String = "") {
-            val id = flexibleInt(obj, "id")
-            val name = obj.optString("localizedName").ifBlank { obj.optString("name") }
-            if (id > 0 && name.isNotBlank()) ordered.putIfAbsent(id, LeagueInfo(id, name, country, ccode))
+        for (i in 0 until tournaments.length()) {
+            val obj = tournaments.optJSONObject(i) ?: continue
+            val id = firstPositiveInt(obj, "id")
+            val name = obj.optString("name")
+            val category = obj.optJSONObject("category")
+            val country = category?.optString("name").orEmpty()
+            val ccode = category?.optString("alpha2").orEmpty()
+            if (id > 0 && name.isNotBlank()) ordered[id] = LeagueInfo(id, name, country, ccode)
         }
-
-        fun parseBucket(array: JSONArray?, inheritedCountry: String = "", inheritedCode: String = "") {
-            if (array == null) return
-            for (i in 0 until array.length()) {
-                val obj = array.optJSONObject(i) ?: continue
-                val groupName = obj.optString("name").ifBlank { inheritedCountry }
-                val groupCode = obj.optString("ccode").ifBlank { inheritedCode }
-                val leagues = obj.optJSONArray("leagues")
-                if (leagues != null) {
-                    for (j in 0 until leagues.length()) leagues.optJSONObject(j)?.let { addLeague(it, groupName, groupCode) }
-                } else addLeague(obj, inheritedCountry, inheritedCode)
+        return ordered.values.sortedWith(compareByDescending<LeagueInfo> {
+            val n = it.name.lowercase(Locale.ROOT)
+            when {
+                n.contains("premier league") -> 100
+                n.contains("champions league") -> 95
+                n == "laliga" || n.contains("la liga") -> 90
+                n.contains("bundesliga") -> 85
+                n.contains("serie a") -> 80
+                n.contains("ligue 1") -> 75
+                else -> 0
             }
-        }
-
-        parseBucket(root.optJSONArray("popular"))
-        parseBucket(root.optJSONArray("international"), "International", "INT")
-        root.optJSONArray("countries")?.let { countries ->
-            for (i in 0 until countries.length()) {
-                val country = countries.optJSONObject(i) ?: continue
-                parseBucket(country.optJSONArray("leagues"), country.optString("name"), country.optString("ccode"))
-            }
-        }
-        return ordered.values.toList()
+        }.thenBy { it.country.lowercase(Locale.ROOT) }.thenBy { it.name.lowercase(Locale.ROOT) })
     }
 
     fun fetchTeamsForLeague(leagueId: Int): List<FavoriteTeam> {
-        val root = requestObjectWithFallback(
-            "https://www.fotmob.com/api/data/leagues?id=$leagueId&ccode3=JPN",
-            "https://www.fotmob.com/api/leagues?id=$leagueId"
+        val seasonsRoot = requestObjectWithFallback(
+            "https://api.sofascore.com/api/v1/unique-tournament/$leagueId/seasons",
+            "https://www.sofascore.com/api/v1/unique-tournament/$leagueId/seasons"
         )
-        val found = LinkedHashMap<Int, FavoriteTeam>()
+        val seasons = seasonsRoot.optJSONArray("seasons") ?: JSONArray()
+        val seasonId = seasons.optJSONObject(0)?.optInt("id") ?: 0
+        if (seasonId <= 0) return emptyList()
 
+        val found = LinkedHashMap<Int, FavoriteTeam>()
         fun addTeam(obj: JSONObject?) {
             if (obj == null) return
             val id = firstPositiveInt(obj, "id", "teamId")
-            val name = obj.optString("shortName").ifBlank { obj.optString("name") }.ifBlank { obj.optString("longName") }
-            if (id > 0 && name.isNotBlank()) found.putIfAbsent(id, FavoriteTeam(id, name, fotmobId = id))
+            val name = obj.optString("shortName").ifBlank { obj.optString("name") }
+            val country = obj.optJSONObject("country")?.optString("name").orEmpty()
+            if (id > 0 && name.isNotBlank()) found[id] = FavoriteTeam(-id, name, sofascoreId = id, country = country)
         }
 
-        fun parseTableRows(rows: JSONArray?) {
-            if (rows == null) return
-            for (i in 0 until rows.length()) addTeam(rows.optJSONObject(i))
+        runCatching {
+            val standings = requestObjectWithFallback(
+                "https://api.sofascore.com/api/v1/unique-tournament/$leagueId/season/$seasonId/standings/total",
+                "https://www.sofascore.com/api/v1/unique-tournament/$leagueId/season/$seasonId/standings/total"
+            )
+            val groups = standings.optJSONArray("standings") ?: JSONArray()
+            for (i in 0 until groups.length()) {
+                val rows = groups.optJSONObject(i)?.optJSONArray("rows") ?: continue
+                for (j in 0 until rows.length()) addTeam(rows.optJSONObject(j)?.optJSONObject("team"))
+            }
         }
-        fun parseTableSection(section: JSONObject?) {
-            if (section == null) return
-            val data = section.optJSONObject("data") ?: section
-            parseTableRows(data.optJSONObject("table")?.optJSONArray("all"))
-            parseTableRows(data.optJSONArray("all"))
-            val tables = data.optJSONArray("tables")
-            if (tables != null) {
-                for (j in 0 until tables.length()) {
-                    val table = tables.optJSONObject(j) ?: continue
-                    parseTableRows(table.optJSONObject("table")?.optJSONArray("all"))
-                    parseTableRows(table.optJSONArray("all"))
+
+        if (found.isEmpty()) {
+            val paths = listOf("next/0", "last/0")
+            for (suffix in paths) {
+                runCatching {
+                    val eventsRoot = requestObjectWithFallback(
+                        "https://api.sofascore.com/api/v1/unique-tournament/$leagueId/season/$seasonId/events/$suffix",
+                        "https://www.sofascore.com/api/v1/unique-tournament/$leagueId/season/$seasonId/events/$suffix"
+                    )
+                    val events = eventsRoot.optJSONArray("events") ?: JSONArray()
+                    for (i in 0 until events.length()) {
+                        val event = events.optJSONObject(i) ?: continue
+                        addTeam(event.optJSONObject("homeTeam"))
+                        addTeam(event.optJSONObject("awayTeam"))
+                    }
                 }
             }
         }
-        root.optJSONArray("table")?.let { sections ->
-            for (i in 0 until sections.length()) parseTableSection(sections.optJSONObject(i))
-        }
-        parseTableSection(root.optJSONObject("table"))
 
-        // IMPORTANT: only collect entities that are unambiguously teams.
-        // v9 walked every object with a teamId, which also matched player objects
-        // (e.g. Adam Smith, Adam Wharton) and caused league pickers to show players.
-        root.optJSONArray("teams")?.let { teams ->
-            for (i in 0 until teams.length()) addTeam(teams.optJSONObject(i))
-        }
-        walkJson(root, maxDepth = 11) { obj ->
-            val home = obj.optJSONObject("home")
-            val away = obj.optJSONObject("away")
-            if (home != null && away != null) {
-                addTeam(home)
-                addTeam(away)
-            }
-            val homeTeam = obj.optJSONObject("homeTeam")
-            val awayTeam = obj.optJSONObject("awayTeam")
-            if (homeTeam != null && awayTeam != null) {
-                addTeam(homeTeam)
-                addTeam(awayTeam)
-            }
-        }
-
-        return found.values
-            .filterNot { it.name.matches(Regex(".*\\b(Referee|Coach|Manager)\\b.*", RegexOption.IGNORE_CASE)) }
-            .sortedBy { it.name.lowercase(Locale.ROOT) }
+        return found.values.sortedBy { it.name.lowercase(Locale.ROOT) }
     }
 
-    /**
-     * FotMob-style instant search with SofaScore fallback. This is deliberately tolerant of
-     * both providers changing nesting/field names; only football team entities are returned.
-     */
+    /** SofaScore football-team search. */
     fun searchTeams(term: String): List<FavoriteTeam> {
         val clean = term.trim()
         if (clean.length < 2) return emptyList()
-
-        val fotmob = runCatching { searchFotMobTeams(clean) }.getOrDefault(emptyList())
-        val sofa = runCatching { searchSofaScoreTeams(clean) }.getOrDefault(emptyList())
-        if (fotmob.isEmpty() && sofa.isEmpty()) return emptyList()
-
-        val merged = LinkedHashMap<String, FavoriteTeam>()
-        fun put(team: FavoriteTeam) {
-            val key = normalizeTeamName(team.name)
-            if (key.isBlank()) return
-            val existing = merged[key]
-            merged[key] = if (existing == null) team else mergeTeam(existing, team)
-        }
-        fotmob.forEach(::put)
-        sofa.forEach(::put)
-
-        // Prefer closest name matches, then teams carrying both provider IDs.
-        return merged.values.sortedWith(
+        return searchSofaScoreTeams(clean).sortedWith(
             compareByDescending<FavoriteTeam> { nameRelevance(clean, it.name) }
-                .thenByDescending { (if (it.fotmobId > 0) 1 else 0) + (if (it.sofascoreId > 0) 1 else 0) }
                 .thenBy { it.name.lowercase(Locale.ROOT) }
         ).take(50)
     }
@@ -441,22 +397,13 @@ object FixtureRepository {
     fun fetchNextFixtureForTeam(team: FavoriteTeam): NextFixture? = fetchNextFixture(team)
 
     private fun fetchNextFixture(team: FavoriteTeam): NextFixture? {
-        var firstError: Throwable? = null
-        if (team.fotmobId > 0) {
-            try {
-                return fetchNextFixtureFotMob(team)
-            } catch (t: Throwable) {
-                firstError = t
-            }
+        val sofaTeam = if (team.sofascoreId > 0) team else {
+            searchSofaScoreTeams(team.name).maxByOrNull { nameRelevance(team.name, it.name) }
+                ?: throw IllegalStateException("SofaScoreでチームを特定できません")
         }
-        if (team.sofascoreId > 0) {
-            return try {
-                fetchNextFixtureSofaScore(team)
-            } catch (t: Throwable) {
-                throw firstError ?: t
-            }
+        return fetchNextFixtureSofaScore(sofaTeam).let { fixture ->
+            if (fixture == null) null else fixture.copy(teamId = team.id, teamName = team.name)
         }
-        throw firstError ?: IllegalStateException("チームIDがありません")
     }
 
     private fun fetchNextFixtureFotMob(team: FavoriteTeam): NextFixture? {

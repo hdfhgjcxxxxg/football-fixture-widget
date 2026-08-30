@@ -71,7 +71,7 @@ abstract class BaseWidgetConfigActivity : AppCompatActivity() {
             setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurface))
         })
         root.addView(TextView(this).apply {
-            text = "このウィジェットだけに表示する${entityLabel}を選びます。選択数に上限はありません。検索から直接追加できます。"
+            text = "このウィジェットだけに表示する${entityLabel}を選びます。検索から直接追加できます。"
             textSize = 14f
             setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
             setPadding(0, dp(8), 0, dp(16))

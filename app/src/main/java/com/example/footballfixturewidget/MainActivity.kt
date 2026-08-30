@@ -102,18 +102,18 @@ class MainActivity : AppCompatActivity() {
         apiBadge = findViewById(R.id.api_badge)
         apiStatus = findViewById(R.id.api_status)
         testConnectionButton = findViewById(R.id.test_connection_button)
-        favoritesCount = findViewById(R.id.favorites_count)
+        favoritesCount = findViewById<TextView>(R.id.favorites_count).apply { visibility = View.GONE }
         favoritesContainer = findViewById(R.id.favorites_container)
         popularTeamsContainer = findViewById(R.id.popular_teams_container)
         leagueDropdown = findViewById(R.id.league_dropdown)
         loadLeagueTeamsButton = findViewById(R.id.load_league_teams_button)
         teamSearchInput = findViewById(R.id.team_search_input)
         searchTeamButton = findViewById(R.id.search_team_button)
-        playersCount = findViewById(R.id.players_count)
+        playersCount = findViewById<TextView>(R.id.players_count).apply { visibility = View.GONE }
         playerSearchInput = findViewById(R.id.player_search_input)
         searchPlayerButton = findViewById(R.id.search_player_button)
         favoritePlayersContainer = findViewById(R.id.favorite_players_container)
-        favoriteLeaguesCount = findViewById(R.id.favorite_leagues_count)
+        favoriteLeaguesCount = findViewById<TextView>(R.id.favorite_leagues_count).apply { visibility = View.GONE }
         favoriteLeagueDropdown = findViewById(R.id.favorite_league_dropdown)
         addFavoriteLeagueButton = findViewById(R.id.add_favorite_league_button)
         favoriteLeaguesContainer = findViewById(R.id.favorite_leagues_container)
@@ -323,7 +323,7 @@ class MainActivity : AppCompatActivity() {
                 result.onSuccess { applyLeagueDirectory(it, false) }
                     .onFailure {
                         apiBadge.text = "再試行"
-                        apiStatus.text = "リーグ一覧を取得できません • 検索はFotMob/SofaScore両方を試します"
+                        apiStatus.text = "リーグ一覧を取得できません • SofaScoreへ再接続してください"
                     }
             }
         }.start()
@@ -356,7 +356,7 @@ class MainActivity : AppCompatActivity() {
         favoriteLeagueDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, labels))
         favoriteLeagueDropdown.setText("", false)
         apiBadge.text = "接続済み"
-        apiStatus.text = "FotMob + SofaScore検索 • ${leagues.size}リーグ/大会"
+        apiStatus.text = "SofaScore API • ${leagues.size}リーグ/大会"
         if (showToast) toast("接続OK：${leagues.size}大会を取得しました")
     }
 
@@ -381,13 +381,13 @@ class MainActivity : AppCompatActivity() {
             return
         }
         setBusy(true)
-        apiStatus.text = "FotMob / SofaScoreを検索中…"
+        apiStatus.text = "SofaScoreで検索中…"
         Thread {
             val result = runCatching { FixtureRepository.searchTeams(query) }
             runOnUiThread {
                 setBusy(false)
                 result.onSuccess { teams ->
-                    apiStatus.text = "検索OK • FotMob + SofaScore"
+                    apiStatus.text = "検索OK • SofaScore"
                     if (teams.isEmpty()) toast("チームが見つかりませんでした。英語名でも試してください")
                     else showTeamPicker("「$query」の検索結果", teams)
                 }.onFailure {
@@ -405,13 +405,13 @@ class MainActivity : AppCompatActivity() {
             return
         }
         setBusy(true)
-        apiStatus.text = "FotMob / SofaScoreで選手を検索中…"
+        apiStatus.text = "SofaScoreで選手を検索中…"
         Thread {
             val result = runCatching { FavoriteEntityRepository.searchPlayers(query) }
             runOnUiThread {
                 setBusy(false)
                 result.onSuccess { players ->
-                    apiStatus.text = "選手検索OK • FotMob + SofaScore"
+                    apiStatus.text = "選手検索OK • SofaScore"
                     if (players.isEmpty()) toast("選手が見つかりませんでした。英語表記でも試してください")
                     else showPlayerPicker("「$query」の選手検索", players)
                 }.onFailure {
@@ -435,7 +435,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurface))
         })
         root.addView(TextView(this).apply {
-            text = "お気に入り選手 • 上限なし • タップですぐ追加/解除"
+            text = "お気に入り選手 • タップですぐ追加/解除"
             textSize = 13f
             setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
             setPadding(0, dp(4), 0, dp(12))
@@ -529,7 +529,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurface))
         })
         root.addView(TextView(this).apply {
-            text = "お気に入りチーム • 上限なし • タップですぐ追加/解除"
+            text = "お気に入りチーム • タップですぐ追加/解除"
             textSize = 13f
             setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
             setPadding(0, dp(4), 0, dp(12))
@@ -621,7 +621,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshFavoritesUi() {
         val teams = FixtureRepository.getFavoriteTeams(this)
-        favoritesCount.text = "${teams.size}チーム • 上限なし • 先頭が初期チーム"
+        favoritesCount.text = "先頭が初期チーム"
         favoritesContainer.removeAllViews()
 
         if (teams.isEmpty()) {
@@ -699,7 +699,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshPlayerFavoritesUi() {
         val players = FavoriteEntityRepository.getFavoritePlayers(this)
-        playersCount.text = "${players.size}人 • 上限なし"
+        playersCount.text = ""
         favoritePlayersContainer.removeAllViews()
         if (players.isEmpty()) {
             favoritePlayersContainer.addView(TextView(this).apply {
@@ -763,7 +763,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshLeagueFavoritesUi() {
         val leagues = FavoriteEntityRepository.getFavoriteLeagues(this)
-        favoriteLeaguesCount.text = "${leagues.size}リーグ • 上限なし"
+        favoriteLeaguesCount.text = ""
         favoriteLeaguesContainer.removeAllViews()
         if (leagues.isEmpty()) {
             favoriteLeaguesContainer.addView(TextView(this).apply {

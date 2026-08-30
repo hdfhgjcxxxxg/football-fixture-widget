@@ -11,11 +11,7 @@ import java.net.URL
 object EntityImageLoader {
     private const val MAX_AGE_MS = 7L * 24L * 60L * 60L * 1000L
 
-    /**
-     * v11: first try every ID already known for the player, then cross-resolve the
-     * same player on the other provider and retry its portrait. This fixes many
-     * cases where one provider has no headshot but the other does.
-     */
+    /** SofaScore画像を優先し、IDが不足している旧お気に入りは名前検索で自動解決する。 */
     fun loadPlayer(context: Context, player: FavoritePlayer): Bitmap? {
         val direct = load(context, "player_${player.id}", FavoriteEntityRepository.playerImageUrls(player))
         if (direct != null) return direct
@@ -26,15 +22,17 @@ object EntityImageLoader {
                     candidate.name.equals(player.name, true) &&
                         (player.teamName.isBlank() || candidate.teamName.isBlank() || candidate.teamName.equals(player.teamName, true))
                 }
-                .firstOrNull { it.sofascoreId > 0 || it.fotmobId > 0 }
+                .firstOrNull { it.sofascoreId > 0 }
         }.getOrNull()
         return if (resolved != null) {
             load(context, "player_${player.id}_cross", FavoriteEntityRepository.playerImageUrls(resolved))
         } else null
     }
 
-    fun loadLeague(context: Context, league: FavoriteLeague): Bitmap? =
-        load(context, "league_${league.id}", FavoriteEntityRepository.leagueImageUrls(league))
+    fun loadLeague(context: Context, league: FavoriteLeague): Bitmap? {
+        val sofaId = runCatching { FavoriteEntityRepository.resolveSofaLeagueId(league) }.getOrDefault(league.id)
+        return load(context, "league_ss_$sofaId", listOf("https://img.sofascore.com/api/v1/unique-tournament/$sofaId/image"))
+    }
 
     private fun load(context: Context, key: String, urls: List<String>): Bitmap? {
         if (urls.isEmpty()) return null
@@ -52,14 +50,13 @@ object EntityImageLoader {
     }
 
     private fun download(url: String): Bitmap? {
-        val sofa = url.contains("sofascore", true)
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 4500
             readTimeout = 6500
             instanceFollowRedirects = true
             setRequestProperty("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
             setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/140 Mobile Safari/537.36")
-            setRequestProperty("Referer", if (sofa) "https://www.sofascore.com/" else "https://www.fotmob.com/")
+            setRequestProperty("Referer", "https://www.sofascore.com/")
         }
         try {
             if (connection.responseCode !in 200..299) return null

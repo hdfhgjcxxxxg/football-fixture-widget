@@ -66,7 +66,7 @@ private object WidgetRenderer {
             else -> "チーム"
         }
         views.setTextViewText(R.id.widget_title, title)
-        views.setTextViewText(R.id.widget_subtitle, "$itemLabel ${selected.size}件 • 上限なし • タップで編集")
+        views.setTextViewText(R.id.widget_subtitle, "タップで編集")
 
         val configClass = when (kind) {
             WidgetKinds.PLAYER -> PlayerWidgetConfigActivity::class.java
@@ -135,7 +135,7 @@ private object WidgetRenderer {
             updatedAt <= 0L -> "未更新"
             else -> "更新 ${FixtureRepository.formatUpdatedAt(updatedAt)}"
         }
-        views.setTextViewText(R.id.status_text, "FotMob / SofaScore • $status")
+        views.setTextViewText(R.id.status_text, "SofaScore • $status")
         manager.updateAppWidget(widgetId, views)
     }
 }

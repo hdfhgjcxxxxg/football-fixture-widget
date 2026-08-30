@@ -1,10 +1,5 @@
-FootballFixtureWidget v11.0
-- Favorites: unlimited
-- Separate team/player/league widgets with per-widget search and selection
-- Better player portrait fallback across FotMob/SofaScore
-- SofaScore exact event links
-- Player lineup status + last 5 ratings + post-match G/A/clean sheet stats
-- Team last 5 form + live score + post-match result and next fixture
-- League current-round full fixture list
-- Match-time display after kickoff with phase refresh alarms
-- Per-widget minute/second countdown toggle retained
+MatchDay Widget v11.3
+- SofaScore API only for league directory, team search, player search, team list and next fixtures
+- Removed UI text showing "10" / fixed counts / "上限なし"
+- Existing legacy favorites without SofaScore IDs are resolved by name when data/images are requested
+- Keeps separate team/player/league widgets, countdown toggle, advanced stats and automatic update

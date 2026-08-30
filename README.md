@@ -1,8 +1,11 @@
-# MatchDay Widget v11.3
+# MatchDay Widget v11.5
 
-- データAPIをSofaScoreに統一
-- 「10」「上限なし」の表示を削除
-- チーム/選手/リーグ検索、画像、試合・評価・ラインナップ・節データはSofaScoreを使用
-- 既存のお気に入りにSofaScore IDが無い場合は名前検索で自動解決
+- SofaScoreを中心に試合・リーグ・チーム・選手データを取得
+- APKのビルドと署名検証が成功した場合だけGitHub Releaseへ自動公開
+- Releaseには `FootballFixtureWidget.apk` と `FootballFixtureWidget.apk.sha256` を自動添付
+- 同一バージョンを再ビルドした場合はReleaseアセットを自動で置き換え
+- Releaseを `latest` に設定し、アプリ内アップデートが最新版を検出できるようにする
+- ビルド失敗時はReleaseを作成・更新しない
 
+v11.4: SofaScore tournament API 404 fix
 v11.2: nullable Int build fix + automatic share sheet on build failure

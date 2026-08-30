@@ -1,5 +1,13 @@
-MatchDay Widget v11.3
-- SofaScore API only for league directory, team search, player search, team list and next fixtures
-- Removed UI text showing "10" / fixed counts / "上限なし"
-- Existing legacy favorites without SofaScore IDs are resolved by name when data/images are requested
-- Keeps separate team/player/league widgets, countdown toggle, advanced stats and automatic update
+MatchDay Widget v11.5
+versionCode=2000000009
+
+GitHub Actions flow:
+1. Build signed release APK
+2. Verify APK signature / zipalign / badging
+3. Upload Actions artifact
+4. Create or update GitHub Release
+5. Upload FootballFixtureWidget.apk + SHA256 to Release
+6. Mark Release as latest
+7. Verify that the APK asset exists in Release
+
+If build or verification fails, no Release is published.

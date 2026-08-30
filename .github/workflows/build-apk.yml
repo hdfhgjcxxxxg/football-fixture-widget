@@ -1,4 +1,4 @@
-name: Build Verified APK
+name: Build Verified APK + GitHub Release
 
 on:
   workflow_dispatch:
@@ -65,6 +65,20 @@ jobs:
           cp "$APK" FootballFixtureWidget.apk
           sha256sum FootballFixtureWidget.apk > FootballFixtureWidget.apk.sha256
 
+      - name: Read app version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION_CODE="$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n1)"
+          VERSION_NAME="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)"
+          test -n "$VERSION_CODE"
+          test -n "$VERSION_NAME"
+          TAG="v${VERSION_NAME}-${VERSION_CODE}"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -75,22 +89,52 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish update release
+      - name: Publish APK to GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION_NAME: ${{ steps.version.outputs.version_name }}
+          VERSION_CODE: ${{ steps.version.outputs.version_code }}
         run: |
           set -euo pipefail
-          VERSION_CODE="$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n1)"
-          VERSION_NAME="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)"
-          test -n "$VERSION_CODE"
-          test -n "$VERSION_NAME"
-          TAG="v${VERSION_NAME}-${VERSION_CODE}"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" FootballFixtureWidget.apk FootballFixtureWidget.apk.sha256 --clobber
-            gh release edit "$TAG" --title "MatchDay Widget v${VERSION_NAME}" --notes "自動ビルドされた署名済みAPKです。" --latest
+          SHA256="$(cut -d' ' -f1 FootballFixtureWidget.apk.sha256)"
+          NOTES=$(cat <<EOF
+          自動ビルドされた固定署名済みAPKです。
+
+          - Version: ${VERSION_NAME}
+          - Version code: ${VERSION_CODE}
+          - Commit: ${GITHUB_SHA}
+          - SHA-256: ${SHA256}
+          EOF
+          )
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" FootballFixtureWidget.apk FootballFixtureWidget.apk.sha256 \
+              --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "MatchDay Widget v${VERSION_NAME}" \
+              --notes "$NOTES"
           else
             gh release create "$TAG" FootballFixtureWidget.apk FootballFixtureWidget.apk.sha256 \
-              --target "$GITHUB_SHA" --title "MatchDay Widget v${VERSION_NAME}" \
-              --notes "自動ビルドされた署名済みAPKです。" --latest
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "MatchDay Widget v${VERSION_NAME}" \
+              --notes "$NOTES"
           fi
+
+          RELEASE_ID="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.id')"
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+            -f make_latest=true >/dev/null
+
+      - name: Verify GitHub Release asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json assets,url \
+            --jq '.assets[].name' | grep -Fx 'FootballFixtureWidget.apk'
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url --jq '.url'

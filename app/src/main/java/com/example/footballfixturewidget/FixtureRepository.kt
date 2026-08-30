@@ -215,8 +215,12 @@ object FixtureRepository {
 
     fun fetchLeagueDirectory(): List<LeagueInfo> {
         val root = requestObjectWithFallback(
-            "https://api.sofascore.com/api/v1/config/unique-tournaments/en/football",
-            "https://www.sofascore.com/api/v1/config/unique-tournaments/en/football"
+            // Current SofaScore football tournament directory.
+            "https://api.sofascore.com/api/v1/sport/football/unique-tournaments",
+            // Legacy configuration routes are kept only as fallbacks because
+            // SofaScore has changed this route over time and some regions still expose it.
+            "https://api.sofascore.com/api/v1/config/unique-tournaments/EN/football",
+            "https://api.sofascore.com/api/v1/config/unique-tournaments/en/football"
         )
         val tournaments = root.optJSONArray("uniqueTournaments") ?: JSONArray()
         val ordered = LinkedHashMap<Int, LeagueInfo>()

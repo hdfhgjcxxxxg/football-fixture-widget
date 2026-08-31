@@ -224,7 +224,11 @@ private class FixtureFactory(
         } else {
             views.setImageViewResource(
                 R.id.team_logo,
-                if (row.kind == WidgetKinds.PLAYER) R.drawable.ic_player_placeholder else R.drawable.ic_launcher
+                when (row.kind) {
+                    WidgetKinds.PLAYER -> R.drawable.ic_player_placeholder
+                    WidgetKinds.LEAGUE -> R.drawable.ic_league_placeholder
+                    else -> R.drawable.ic_launcher
+                }
             )
         }
 

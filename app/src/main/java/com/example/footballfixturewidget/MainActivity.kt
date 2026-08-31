@@ -450,8 +450,15 @@ class MainActivity : AppCompatActivity() {
         favoriteLeagueDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, labels))
         favoriteLeagueDropdown.setText("", false)
         apiBadge.text = "接続済み"
-        apiStatus.text = "${DataSourceManager.label(this)} • ${leagues.size}リーグ/大会"
-        if (showToast) toast("接続OK：${leagues.size}大会を取得しました")
+        val fallback = FixtureRepository.leagueDirectoryUsesFallback()
+        apiStatus.text = if (fallback) {
+            "${DataSourceManager.label(this)} • ${leagues.size}リーグ/大会 • キャッシュ/内蔵一覧"
+        } else {
+            "${DataSourceManager.label(this)} • ${leagues.size}リーグ/大会"
+        }
+        if (showToast) {
+            toast(if (fallback) "APIが利用できないためリーグ一覧を復旧表示しました" else "接続OK：${leagues.size}大会を取得しました")
+        }
     }
 
     private fun loadTeamsForLeague(league: LeagueInfo) {
@@ -880,7 +887,7 @@ class MainActivity : AppCompatActivity() {
                 setPadding(dp(14), dp(12), dp(10), dp(12))
             }
             val image = ImageView(this).apply {
-                setImageResource(R.drawable.ic_launcher)
+                setImageResource(R.drawable.ic_league_placeholder)
                 scaleType = ImageView.ScaleType.CENTER_INSIDE
             }
             row.addView(image, LinearLayout.LayoutParams(dp(44), dp(44)))

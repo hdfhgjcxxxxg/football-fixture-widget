@@ -19,3 +19,8 @@ SofaScore may return HTTP 403 to unofficial clients. In **両方** mode this doe
 ## v12.1
 - データ取得元メニューを「結合 / SofaScore / FotMob」の3択に修正。
 - 選択済みの文字列でAutoCompleteTextViewが絞り込まれ、1件しか表示されない問題を修正。
+
+## v12.4
+- Player photos are now shown exactly as provided by FotMob/SofaScore; automatic white-background transparency removal was removed.
+- League directory uses current FotMob `/api/allLeagues` first, caches the last successful directory, and falls back to a built-in popular-league list when upstream APIs are unavailable.
+- Red fallback football tiles were replaced with a simple monochrome football placeholder.

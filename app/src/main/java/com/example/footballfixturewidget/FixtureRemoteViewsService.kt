@@ -105,20 +105,11 @@ private class FixtureFactory(
                 else -> normal
             }
             // Keep the previous result and the upcoming fixture visually separate.
-            // The matchup line is reserved for the previous result; the bottom line
-            // is reserved for the next fixture so users never read them as one block.
+            // v12.8 swaps their positions and visual emphasis: the bigger upper line
+            // now shows the next fixture, while the smaller lower line shows the
+            // previous result.
             val matchup = when {
                 live != null -> "${live.homeName} ${live.scoreText} ${live.awayName}"
-                last != null -> "前節 ${teamOpponent(last, extra.sofaTeamId)} ${teamPerspectiveScore(last, extra.sofaTeamId)}"
-                else -> "前節 結果なし"
-            }
-            val form = extra?.recentForm?.take(5)?.joinToString(" ").orEmpty()
-            val meta = listOf(
-                if (live != null) "LIVE ${live.liveMinute.coerceAtLeast(1)}'" else fixture?.competition.orEmpty(),
-                if (form.isNotBlank()) "直近5 $form" else ""
-            ).filter(String::isNotBlank).joinToString(" • ")
-            val bottom = when {
-                live != null -> "試合中 • ${live.competition}"
                 next != null -> {
                     val opponent = if (next.homeId == extra.sofaTeamId) "vs ${next.awayName}" else "@ ${next.homeName}"
                     val date = FixtureRepository.formatDate(Instant.ofEpochSecond(next.startTimestamp).toString())
@@ -129,6 +120,16 @@ private class FixtureFactory(
                     "次節 $opponent • ${FixtureRepository.formatDate(fixture.utcDate)}"
                 }
                 else -> "次節 日程未定"
+            }
+            val form = extra?.recentForm?.take(5)?.joinToString(" ").orEmpty()
+            val meta = listOf(
+                if (live != null) "LIVE ${live.liveMinute.coerceAtLeast(1)}'" else fixture?.competition.orEmpty(),
+                if (form.isNotBlank()) "直近5 $form" else ""
+            ).filter(String::isNotBlank).joinToString(" • ")
+            val bottom = when {
+                live != null -> "試合中 • ${live.competition}"
+                last != null -> "前節 ${teamOpponent(last, extra.sofaTeamId)} ${teamPerspectiveScore(last, extra.sofaTeamId)}"
+                else -> "前節 結果なし"
             }
             WidgetRow(team.id.toLong(), team.id, kind, team.name, matchup, meta, bottom, fixture, live, team = team)
         }

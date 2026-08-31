@@ -1,0 +1,11 @@
+v12.8
+
+Changes
+- Team widget: swapped previous-match and next-match positions.
+- Team widget: the upper larger matchup line now shows 次節.
+- Team widget: the lower smaller line now shows 前節.
+- Keeps v12.6 PK-agnostic recent 5 match score behavior.
+
+Version
+- versionName 12.8
+- versionCode 2000000024

@@ -11,15 +11,18 @@ class MatchDayApplication : Application() {
         appContext = applicationContext
         RuntimeCrashStore.install(applicationContext)
 
-        // v12.3: updater startup is deliberately delayed and wrapped so it can
-        // never make the launcher crash. The normal app UI starts first.
+        // v12.5: keep startup resilient, clean stale update files, and avoid
+        // duplicate network checks after every launcher open.
+        runCatching { UpdateManager.cleanupInstalledUpdate(applicationContext) }
         if (UpdateManager.isAutoEnabled(applicationContext)) {
             runCatching { UpdateManager.schedule(applicationContext) }
-            Handler(Looper.getMainLooper()).postDelayed({
-                runCatching {
-                    UpdateManager.checkAsync(applicationContext, manual = false)
-                }
-            }, 30_000L)
+            if (UpdateManager.isAutoCheckDue(applicationContext)) {
+                Handler(Looper.getMainLooper()).postDelayed({
+                    runCatching {
+                        UpdateManager.checkAsync(applicationContext, manual = false)
+                    }
+                }, 30_000L)
+            }
         }
     }
 

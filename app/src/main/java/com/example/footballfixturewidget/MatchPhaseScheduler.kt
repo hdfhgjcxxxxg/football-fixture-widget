@@ -18,9 +18,22 @@ object MatchPhaseScheduler {
         val now = System.currentTimeMillis()
         fixtures.filter { it.hasMatch && it.utcDate.isNotBlank() }.distinctBy { it.utcDate + "|" + it.opponent }.forEach { f ->
             val start = runCatching { Instant.parse(f.utcDate).toEpochMilli() }.getOrNull() ?: return@forEach
-            // Refresh at kickoff and shortly after it (providers can still say not-started at the exact second),
-            // then around half-time/second-half/full-time boundaries.
-            listOf(start, start + 2L * 60_000L, start + 46L * 60_000L, start + 62L * 60_000L, start + 106L * 60_000L).forEachIndexed { index, whenMs ->
+            // Refresh before kickoff so an officially announced lineup replaces the
+            // "未発表" state, then refresh through normal/full/extra-time boundaries so
+            // a stale LIVE flag is cleared even if the provider update at 90' is late.
+            listOf(
+                start - 75L * 60_000L,
+                start - 60L * 60_000L,
+                start - 45L * 60_000L,
+                start,
+                start + 2L * 60_000L,
+                start + 46L * 60_000L,
+                start + 62L * 60_000L,
+                start + 106L * 60_000L,
+                start + 120L * 60_000L,
+                start + 150L * 60_000L,
+                start + 210L * 60_000L
+            ).forEachIndexed { index, whenMs ->
                 if (whenMs <= now) return@forEachIndexed
                 val requestCode = (f.teamId * 31 + index * 997 + (start / 60_000L).toInt()) and 0x7fffffff
                 val pi = PendingIntent.getBroadcast(

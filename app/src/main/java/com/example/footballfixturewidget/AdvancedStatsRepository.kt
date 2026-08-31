@@ -35,8 +35,20 @@ data class RichEvent(
     val provider: String = DataSourceManager.SOFASCORE,
     val providerUrl: String = ""
 ) {
-    val isLive: Boolean get() = statusType.equals("inprogress", true) || statusType.equals("live", true)
-    val isFinished: Boolean get() = statusType.equals("finished", true) || statusType.equals("ended", true)
+    val isLive: Boolean
+        get() {
+            val providerSaysLive = statusType.equals("inprogress", true) || statusType.equals("live", true)
+            if (!providerSaysLive) return false
+            // Never keep a stale cached "live" flag forever. Even an extra-time match
+            // should have left live state within four hours of kickoff.
+            return startTimestamp <= 0L || Instant.now().epochSecond <= startTimestamp + 4L * 60L * 60L
+        }
+    val isFinished: Boolean
+        get() {
+            if (statusType.equals("finished", true) || statusType.equals("ended", true)) return true
+            val providerSaysLive = statusType.equals("inprogress", true) || statusType.equals("live", true)
+            return providerSaysLive && startTimestamp > 0L && Instant.now().epochSecond > startTimestamp + 4L * 60L * 60L
+        }
     val isScheduled: Boolean get() = !isLive && !isFinished
     val scoreText: String get() = if (homeScore != null && awayScore != null) "$homeScore-$awayScore" else "-"
     val sofaUrl: String
@@ -390,22 +402,44 @@ object AdvancedStatsRepository {
     private fun fetchFotMobLineupStatus(matchId: Long, playerId: Int): String {
         val root = requestObjectAbsolute("https://www.fotmob.com/api/data/matchDetails?matchId=$matchId")
         val lineup = root.optJSONObject("content")?.optJSONObject("lineup") ?: return "未発表"
+
+        // FotMob can expose predicted/provisional players before the official XI is
+        // announced. Do not label those players as starters unless the lineup is
+        // explicitly confirmed, or the match itself has already started.
+        val headerStatus = root.optJSONObject("header")?.optJSONObject("status")
+        val general = root.optJSONObject("general")
+        val matchStarted = headerStatus?.optBoolean("started", false) == true ||
+            general?.optBoolean("started", false) == true ||
+            general?.optBoolean("matchStarted", false) == true
+        val confirmed = lineup.optBoolean("confirmed", false) ||
+            lineup.optBoolean("isConfirmed", false) ||
+            lineup.optBoolean("lineupConfirmed", false) ||
+            lineup.optString("status").contains("confirm", true) ||
+            lineup.optString("lineupStatus").contains("confirm", true)
+        if (!confirmed && !matchStarted) return "未発表"
+
         val lineups = lineup.optJSONArray("lineups") ?: JSONArray()
-        var hasLineup = false
+        var hasOfficialLineup = false
         for (i in 0 until lineups.length()) {
             val side = lineups.optJSONObject(i) ?: continue
             val players = side.optJSONArray("players") ?: JSONArray()
-            if (players.length() > 0) hasLineup = true
+            if (players.length() > 0) hasOfficialLineup = true
             for (j in 0 until players.length()) {
                 val entry = players.optJSONObject(j) ?: continue
                 val p = entry.optJSONObject("player") ?: entry
                 val id = firstInt(p, "id", "playerId").takeIf { it > 0 } ?: firstInt(entry, "id", "playerId")
                 if (id != playerId) continue
-                val starter = entry.optBoolean("isStarter", !entry.optBoolean("substitute", false))
+                val starter = when {
+                    entry.has("isStarter") -> entry.optBoolean("isStarter", false)
+                    entry.has("substitute") -> !entry.optBoolean("substitute", false)
+                    // The main players array is the XI on published FotMob lineups.
+                    else -> true
+                }
                 return if (starter) "スタメン" else "ベンチ"
             }
         }
-        // Some FotMob payloads expose bench separately.
+
+        // Some FotMob payloads expose the bench separately.
         val bench = lineup.optJSONObject("bench")
         if (bench != null) {
             val arr = bench.optJSONArray("benchArr") ?: JSONArray()
@@ -417,7 +451,7 @@ object AdvancedStatsRepository {
                 }
             }
         }
-        return if (hasLineup) "ベンチ外" else "未発表"
+        return if (hasOfficialLineup || confirmed || matchStarted) "ベンチ外" else "未発表"
     }
 
     private fun fetchLeagueRoundFotMob(league: FavoriteLeague): LeagueRoundData {
@@ -460,8 +494,11 @@ object AdvancedStatsRepository {
         if (id <= 0L) return null
         val status = o.optJSONObject("status") ?: JSONObject()
         val kickoff = parseFotMobInstant(o) ?: return null
-        val finished = status.optBoolean("finished", false)
-        val started = status.optBoolean("started", false) || status.optString("reason").contains("live", true)
+        val reasonText = fotMobReasonText(status)
+        val finished = status.optBoolean("finished", false) ||
+            reasonText.contains("full-time", true) || reasonText.equals("ft", true) || reasonText.contains("after penalties", true)
+        val started = !finished && (status.optBoolean("started", false) ||
+            reasonText.contains("live", true) || reasonText.contains("half", true) || reasonText.contains("extra time", true))
         val statusType = when { finished -> "finished"; started -> "inprogress"; else -> "scheduled" }
         val scoreHome = flexibleNullableInt(home.opt("score"))
         val scoreAway = flexibleNullableInt(away.opt("score"))
@@ -480,7 +517,7 @@ object AdvancedStatsRepository {
         }
         return RichEvent(
             eventId = id, startTimestamp = kickoff.epochSecond, statusType = statusType,
-            statusDescription = status.optString("reason"),
+            statusDescription = reasonText,
             homeName = home.optString("name").ifBlank { home.optString("longName") },
             awayName = away.optString("name").ifBlank { away.optString("longName") },
             homeId = firstInt(home, "id", "teamId"), awayId = firstInt(away, "id", "teamId"),
@@ -488,6 +525,15 @@ object AdvancedStatsRepository {
             roundLabel = round, slug = "", customId = "", liveMinute = liveMinute,
             provider = DataSourceManager.FOTMOB, providerUrl = url
         )
+    }
+
+    private fun fotMobReasonText(status: JSONObject): String {
+        return when (val reason = status.opt("reason")) {
+            is String -> reason
+            is JSONObject -> listOf(reason.optString("long"), reason.optString("short"), reason.optString("name"))
+                .firstOrNull { it.isNotBlank() }.orEmpty()
+            else -> ""
+        }
     }
 
     private fun parseFotMobInstant(o: JSONObject): Instant? {
@@ -632,6 +678,9 @@ object AdvancedStatsRepository {
     private fun fetchLineupStatus(eventId: Long, playerId: Int): String {
         val root = requestObject("/event/$eventId/lineups")
         val confirmed = root.optBoolean("confirmed", false)
+        // SofaScore may provide predicted lineups before the official announcement.
+        // Only classify starter/bench/absent after confirmed=true.
+        if (!confirmed) return "未発表"
         for (sideName in listOf("home", "away")) {
             val side = root.optJSONObject(sideName) ?: continue
             val players = side.optJSONArray("players") ?: JSONArray()

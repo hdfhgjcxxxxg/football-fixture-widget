@@ -47,11 +47,44 @@ private class FixtureFactory(
 
     override fun onDataSetChanged() {
         val selected = WidgetSelectionStore.getSelectedIds(context, widgetId, kind).toSet()
-        rows = when (kind) {
+        val baseRows = when (kind) {
             WidgetKinds.PLAYER -> playerRows(selected)
             WidgetKinds.LEAGUE -> leagueRows(selected)
             else -> teamRows(selected)
         }
+        rows = enrichTapProviderLinks(baseRows)
+    }
+
+    /**
+     * Player/league rows can come from SofaScore even when the user's tap target is
+     * FotMob. Resolve the same fixture on the selected provider by kickoff + teams so
+     * the row opens the exact match instead of merely launching the app home screen.
+     */
+    private fun enrichTapProviderLinks(input: List<WidgetRow>): List<WidgetRow> {
+        val target = FixtureRepository.getTapTarget(context)
+        if (target != FixtureRepository.TAP_FOTMOB && target != FixtureRepository.TAP_SOFASCORE) return input
+
+        val indexedFixtures = input.mapIndexedNotNull { index, row -> row.fixture?.let { index to it } }
+        if (indexedFixtures.isEmpty()) return input
+
+        val needsResolution = indexedFixtures.any { (_, fixture) ->
+            when (target) {
+                FixtureRepository.TAP_FOTMOB -> fixture.fotmobMatchId <= 0L || fixture.fotmobUrl.isBlank()
+                FixtureRepository.TAP_SOFASCORE -> fixture.sofascoreEventId <= 0L || fixture.sofascoreUrl.isBlank()
+                else -> false
+            }
+        }
+        if (!needsResolution) return input
+
+        val resolved = runCatching {
+            ExternalMatchResolver.resolveForTarget(indexedFixtures.map { it.second }, target)
+        }.getOrNull() ?: return input
+
+        val replacement = HashMap<Int, NextFixture>()
+        indexedFixtures.forEachIndexed { resolvedIndex, pair ->
+            resolved.getOrNull(resolvedIndex)?.let { replacement[pair.first] = it }
+        }
+        return input.mapIndexed { index, row -> replacement[index]?.let { row.copy(fixture = it) } ?: row }
     }
 
     private fun teamRows(selected: Set<Int>): List<WidgetRow> {
@@ -61,7 +94,7 @@ private class FixtureFactory(
         return selected.mapNotNull { id ->
             val team = favorites[id] ?: return@mapNotNull null
             val extra = extras[id]
-            val live = extra?.live
+            val live = extra?.live?.takeIf { it.isLive }
             val next = extra?.next
             val last = extra?.last
             val normal = normalCache[id]
@@ -100,7 +133,7 @@ private class FixtureFactory(
         return selected.mapNotNull { id ->
             val player = favorites[id] ?: return@mapNotNull null
             val extra = extras[id]
-            val live = extra?.live
+            val live = extra?.live?.takeIf { it.isLive }
             val next = extra?.next
             val fixture = when {
                 live != null -> live.asFixture(player.id, player.name, extra.sofaTeamId)
@@ -224,11 +257,7 @@ private class FixtureFactory(
         } else {
             views.setImageViewResource(
                 R.id.team_logo,
-                when (row.kind) {
-                    WidgetKinds.PLAYER -> R.drawable.ic_player_placeholder
-                    WidgetKinds.LEAGUE -> R.drawable.ic_league_placeholder
-                    else -> R.drawable.ic_launcher
-                }
+                if (row.kind == WidgetKinds.PLAYER) R.drawable.ic_player_placeholder else R.drawable.ic_launcher
             )
         }
 
@@ -253,6 +282,13 @@ private class FixtureFactory(
         val live = row.liveEvent
         val showDetail = WidgetSelectionStore.showDetailedCountdown(context, widgetId, kind)
         when {
+            live != null && live.isFinished -> {
+                views.setViewVisibility(R.id.countdown_label, View.VISIBLE)
+                views.setViewVisibility(R.id.countdown, View.VISIBLE)
+                views.setTextViewText(R.id.countdown_label, "FULL TIME")
+                views.setChronometer(R.id.countdown, SystemClock.elapsedRealtime(), "%s", false)
+                views.setTextViewText(R.id.countdown, "FT")
+            }
             live != null && live.isLive -> {
                 views.setViewVisibility(R.id.countdown_label, View.VISIBLE)
                 views.setViewVisibility(R.id.countdown, View.VISIBLE)
@@ -284,11 +320,27 @@ private class FixtureFactory(
                         views.setTextViewText(R.id.countdown, formatHoursOnly(remaining))
                     }
                 } else {
+                    val elapsed = -remaining
+                    val maxPlausibleMatchMs = 3L * 60L * 60L * 1000L + 30L * 60L * 1000L
                     views.setViewVisibility(R.id.countdown_label, View.VISIBLE)
                     views.setViewVisibility(R.id.countdown, View.VISIBLE)
-                    views.setTextViewText(R.id.countdown_label, "LIVE")
-                    views.setChronometer(R.id.countdown, SystemClock.elapsedRealtime(), "%s", false)
-                    views.setTextViewText(R.id.countdown, "LIVE")
+                    if (elapsed <= maxPlausibleMatchMs) {
+                        // Provider state can lag a little at kickoff. Locally advance the
+                        // match clock, but never keep LIVE forever after the plausible end.
+                        views.setTextViewText(R.id.countdown_label, "MATCH TIME")
+                        if (showDetail) {
+                            views.setChronometer(R.id.countdown, SystemClock.elapsedRealtime() - elapsed, "%s", true)
+                            views.setChronometerCountDown(R.id.countdown, false)
+                        } else {
+                            val minute = (elapsed / 60_000L).coerceAtLeast(1L).coerceAtMost(130L)
+                            views.setChronometer(R.id.countdown, SystemClock.elapsedRealtime(), "%s", false)
+                            views.setTextViewText(R.id.countdown, "${minute}'")
+                        }
+                    } else {
+                        views.setTextViewText(R.id.countdown_label, "STATUS")
+                        views.setChronometer(R.id.countdown, SystemClock.elapsedRealtime(), "%s", false)
+                        views.setTextViewText(R.id.countdown, "更新待ち")
+                    }
                 }
             }
             else -> {

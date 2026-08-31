@@ -36,7 +36,7 @@ object SupplementalWidgetRepository {
         val previous = loadPlayerCache(context).associateBy { it.playerId }
         val items = hydrated.map { player ->
             val extra = rich[player.id]
-            val event = extra?.live ?: extra?.next
+            val event = extra?.live?.takeIf { it.isLive } ?: extra?.next
             val fixture = event?.asFixture(player.id, player.name, extra?.sofaTeamId ?: 0)
                 ?: previous[player.id]?.fixture
                 ?: runCatching {

@@ -58,6 +58,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var autoUpdateSwitch: MaterialSwitch
     private lateinit var updateStatus: TextView
     private lateinit var checkUpdateButton: MaterialButton
+    private lateinit var installUpdateButton: MaterialButton
     private lateinit var progress: ProgressBar
     private lateinit var saveButton: MaterialButton
 
@@ -162,6 +163,7 @@ class MainActivity : AppCompatActivity() {
         autoUpdateSwitch = findViewById(R.id.auto_update_switch)
         updateStatus = findViewById(R.id.update_status)
         checkUpdateButton = findViewById(R.id.check_update_button)
+        installUpdateButton = findViewById(R.id.install_update_button)
         progress = findViewById(R.id.progress)
         saveButton = findViewById(R.id.save_button)
     }
@@ -366,14 +368,41 @@ class MainActivity : AppCompatActivity() {
         updateStatus.text = "現在 v${BuildConfig.VERSION_NAME} • 12時間ごとに更新確認"
         autoUpdateSwitch.setOnCheckedChangeListener { _, checked ->
             UpdateManager.setAutoEnabled(this, checked)
+            if (checked) requestNotificationPermissionIfNeeded()
             updateStatus.text = if (checked) "自動確認ON • 新版APKを自動ダウンロード" else "自動確認OFF"
+            refreshDownloadedUpdateUi()
         }
-        checkUpdateButton.setOnClickListener { checkForUpdateManually() }
+        checkUpdateButton.setOnClickListener {
+            requestNotificationPermissionIfNeeded()
+            checkForUpdateManually()
+        }
+        installUpdateButton.setOnClickListener {
+            startActivity(Intent(this, UpdateInstallActivity::class.java))
+        }
 
         if (autoUpdateSwitch.isChecked) {
+            requestNotificationPermissionIfNeeded()
             // Schedule the periodic check, but do not make a network request during
             // Activity startup. This prevents updater/network failures from affecting launch.
             runCatching { UpdateManager.schedule(this) }
+        }
+        refreshDownloadedUpdateUi()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::installUpdateButton.isInitialized) refreshDownloadedUpdateUi()
+    }
+
+    private fun refreshDownloadedUpdateUi() {
+        val file = runCatching { UpdateManager.downloadedFile(this) }.getOrNull()
+        if (file != null) {
+            installUpdateButton.visibility = View.VISIBLE
+            val version = UpdateManager.downloadedVersionName(this)?.let { " v$it" }.orEmpty()
+            installUpdateButton.text = "ダウンロード済み$version をインストール"
+            updateStatus.text = "更新APKを検証済み • インストールできます"
+        } else {
+            installUpdateButton.visibility = View.GONE
         }
     }
 
@@ -450,15 +479,8 @@ class MainActivity : AppCompatActivity() {
         favoriteLeagueDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, labels))
         favoriteLeagueDropdown.setText("", false)
         apiBadge.text = "接続済み"
-        val fallback = FixtureRepository.leagueDirectoryUsesFallback()
-        apiStatus.text = if (fallback) {
-            "${DataSourceManager.label(this)} • ${leagues.size}リーグ/大会 • キャッシュ/内蔵一覧"
-        } else {
-            "${DataSourceManager.label(this)} • ${leagues.size}リーグ/大会"
-        }
-        if (showToast) {
-            toast(if (fallback) "APIが利用できないためリーグ一覧を復旧表示しました" else "接続OK：${leagues.size}大会を取得しました")
-        }
+        apiStatus.text = "${DataSourceManager.label(this)} • ${leagues.size}リーグ/大会"
+        if (showToast) toast("接続OK：${leagues.size}大会を取得しました")
     }
 
     private fun loadTeamsForLeague(league: LeagueInfo) {
@@ -887,7 +909,7 @@ class MainActivity : AppCompatActivity() {
                 setPadding(dp(14), dp(12), dp(10), dp(12))
             }
             val image = ImageView(this).apply {
-                setImageResource(R.drawable.ic_league_placeholder)
+                setImageResource(R.drawable.ic_launcher)
                 scaleType = ImageView.ScaleType.CENTER_INSIDE
             }
             row.addView(image, LinearLayout.LayoutParams(dp(44), dp(44)))

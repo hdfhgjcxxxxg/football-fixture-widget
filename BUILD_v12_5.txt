@@ -1,0 +1,15 @@
+v12.5
+- 固定署名キー保護を強化。GitHub Secret消失時でも端末バックアップがあれば旧キーを復元し、新しいキーで上書きしない
+- 既存アプリが入っているのに署名バックアップもSecretも無い場合は、新規キー生成を止めて署名不一致更新を防止
+- Git clone失敗時に別履歴を作ってpushする危険なフォールバックを廃止し、空リポジトリの場合だけ初期化
+- GitHub Actions workflow_dispatchのRUN_IDをhead SHAと実行前IDで特定し、古い実行を誤監視しない
+- ReleaseのAPKとSHA-256ファイルを両方ダウンロードして一致検証
+- 自動更新の表示と実処理を12時間に統一
+- 自動更新の重複チェック・重複ダウンロードを抑止し、失敗時のみ30分後から再試行可能
+- DownloadManagerの成功状態、APK package/version/signatureをインストール前に検証
+- Android 13以降の通知権限を自動更新利用時に要求
+- ダウンロード済み更新をアプリ画面から再度インストールできるボタンを追加
+- 不明なアプリのインストールを拒否して戻った場合に透明画面へ残る問題を修正
+- ACTION_INSTALL_PACKAGE優先＋ACTION_VIEWフォールバックでインストーラー起動を強化
+- GitHub Actionsに署名Secret事前検証とconcurrencyを追加
+- versionCode 2000000021

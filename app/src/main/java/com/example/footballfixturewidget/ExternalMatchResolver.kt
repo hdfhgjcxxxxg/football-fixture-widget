@@ -44,7 +44,8 @@ object ExternalMatchResolver {
     private fun resolveFotMob(fixtures: List<NextFixture>): List<NextFixture> {
         val byDate = mutableMapOf<LocalDate, List<Candidate>>()
         return fixtures.map { fixture ->
-            if (!fixture.hasMatch || fixture.utcDate.isBlank() || fixture.fotmobMatchId > 0L) return@map fixture
+            val hasCanonicalPage = fixture.fotmobUrl.contains("/matches/", ignoreCase = true)
+            if (!fixture.hasMatch || fixture.utcDate.isBlank() || (fixture.fotmobMatchId > 0L && hasCanonicalPage)) return@map fixture
             val match = candidateDates(fixture.utcDate).asSequence()
                 .flatMap { date ->
                     byDate.getOrPut(date) { runCatching { fetchFotMobDate(date) }.getOrDefault(emptyList()) }.asSequence()

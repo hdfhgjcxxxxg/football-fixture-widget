@@ -79,12 +79,10 @@ object FixtureRepository {
     private const val PREFS = "fixture_prefs"
     private const val KEY_FAVORITES = "favorite_teams"
     private const val KEY_CACHE = "fixture_cache"
-    private const val KEY_LEAGUE_DIRECTORY_CACHE = "league_directory_cache_v124"
     private const val KEY_WIDGET_COLOR = "widget_color"
     private const val KEY_TAP_TARGET = "tap_target"
     private const val KEY_SOURCE_VERSION = "data_source_version"
     private const val SOURCE_VERSION_MULTI_PROVIDER = 3
-    @Volatile private var lastLeagueDirectoryFallback = false
 
     // 保存件数に固定上限は設けない（UIには件数上限を表示しない）。
     const val MAX_FAVORITES = Int.MAX_VALUE
@@ -225,43 +223,24 @@ object FixtureRepository {
     }
 
     fun fetchLeagueDirectory(): List<LeagueInfo> {
-        val context = MatchDayApplication.appContext
-        val mode = DataSourceManager.getMode(context)
-
-        val live = when (mode) {
-            DataSourceManager.FOTMOB -> runCatching { fetchFotMobLeagueDirectory() }.getOrNull().orEmpty()
-            DataSourceManager.SOFASCORE -> runCatching { fetchSofaLeagueDirectory() }.getOrNull().orEmpty()
+        val mode = DataSourceManager.getMode(MatchDayApplication.appContext)
+        return when (mode) {
+            DataSourceManager.FOTMOB -> fetchFotMobLeagueDirectory()
+            DataSourceManager.SOFASCORE -> fetchSofaLeagueDirectory()
             else -> {
-                val fm = runCatching { fetchFotMobLeagueDirectory() }.getOrNull().orEmpty()
-                val ss = runCatching { fetchSofaLeagueDirectory() }.getOrNull().orEmpty()
+                val fm = runCatching { fetchFotMobLeagueDirectory() }
+                val ss = runCatching { fetchSofaLeagueDirectory() }
                 when {
-                    fm.isNotEmpty() && ss.isNotEmpty() -> mergeLeagueLists(fm, ss)
-                    fm.isNotEmpty() -> fm
-                    ss.isNotEmpty() -> ss
-                    else -> emptyList()
+                    fm.isSuccess && ss.isSuccess -> mergeLeagueLists(fm.getOrThrow(), ss.getOrThrow())
+                    fm.isSuccess -> fm.getOrThrow()
+                    ss.isSuccess -> ss.getOrThrow()
+                    else -> throw IllegalStateException(
+                        "FotMob: ${fm.exceptionOrNull()?.message ?: "取得失敗"}; SofaScore: ${ss.exceptionOrNull()?.message ?: "取得失敗"}"
+                    )
                 }
             }
         }
-
-        if (live.isNotEmpty()) {
-            lastLeagueDirectoryFallback = false
-            val combined = mergeWithBuiltInLeagues(live)
-            saveLeagueDirectoryCache(context, combined)
-            return combined
-        }
-
-        val cached = loadLeagueDirectoryCache(context)
-        if (cached.isNotEmpty()) {
-            lastLeagueDirectoryFallback = true
-            return mergeWithBuiltInLeagues(cached)
-        }
-
-        // The selector must remain usable even when an upstream API is temporarily blocked.
-        lastLeagueDirectoryFallback = true
-        return builtInLeagueDirectory()
     }
-
-    fun leagueDirectoryUsesFallback(): Boolean = lastLeagueDirectoryFallback
 
     private fun fetchSofaLeagueDirectory(): List<LeagueInfo> {
         val root = requestObjectWithFallback(
@@ -288,20 +267,10 @@ object FixtureRepository {
 
     private fun fetchFotMobLeagueDirectory(): List<LeagueInfo> {
         val root = requestObjectWithFallback(
-            "https://www.fotmob.com/api/allLeagues",
-            "https://www.fotmob.com/api/allLeagues?locale=en",
             "https://www.fotmob.com/api/data/allLeagues?locale=en",
-            "https://www.fotmob.com/api/data/allLeagues"
+            "https://www.fotmob.com/api/allLeagues?locale=en"
         )
         val found = LinkedHashMap<Int, LeagueInfo>()
-        val popular = root.optJSONArray("popular") ?: JSONArray()
-        for (i in 0 until popular.length()) {
-            val o = popular.optJSONObject(i) ?: continue
-            val id = firstPositiveInt(o, "id", "leagueId")
-            val name = o.optString("name")
-            val country = o.optString("country").ifBlank { "International" }
-            if (id > 0 && name.isNotBlank()) found[id] = LeagueInfo(id, name, country, "", fotmobId = id)
-        }
         val international = root.optJSONArray("international") ?: JSONArray()
         for (i in 0 until international.length()) {
             val o = international.optJSONObject(i) ?: continue
@@ -328,88 +297,6 @@ object FixtureRepository {
         }
         if (found.isEmpty()) throw IllegalStateException("FotMobのリーグ一覧が空です")
         return sortLeagues(found.values.toList())
-    }
-
-    private fun mergeWithBuiltInLeagues(live: List<LeagueInfo>): List<LeagueInfo> {
-        val out = LinkedHashMap<String, LeagueInfo>()
-        builtInLeagueDirectory().forEach { out[normalizeTeamName(it.name)] = it }
-        live.forEach { incoming ->
-            val key = normalizeTeamName(incoming.name)
-            val existing = out[key]
-            out[key] = if (existing == null) incoming else LeagueInfo(
-                id = when {
-                    incoming.fotmobId > 0 -> incoming.fotmobId
-                    incoming.sofascoreId > 0 -> -incoming.sofascoreId
-                    else -> incoming.id
-                },
-                name = incoming.name.ifBlank { existing.name },
-                country = incoming.country.ifBlank { existing.country },
-                ccode = incoming.ccode.ifBlank { existing.ccode },
-                fotmobId = if (incoming.fotmobId > 0) incoming.fotmobId else existing.fotmobId,
-                sofascoreId = if (incoming.sofascoreId > 0) incoming.sofascoreId else existing.sofascoreId
-            )
-        }
-        return sortLeagues(out.values.toList())
-    }
-
-    private fun builtInLeagueDirectory(): List<LeagueInfo> = sortLeagues(listOf(
-        LeagueInfo(47, "Premier League", "England", "ENG", fotmobId = 47),
-        LeagueInfo(48, "Championship", "England", "ENG", fotmobId = 48),
-        LeagueInfo(42, "Champions League", "International", "", fotmobId = 42),
-        LeagueInfo(73, "Europa League", "International", "", fotmobId = 73),
-        LeagueInfo(10216, "Conference League", "International", "", fotmobId = 10216),
-        LeagueInfo(87, "LaLiga", "Spain", "ESP", fotmobId = 87),
-        LeagueInfo(54, "Bundesliga", "Germany", "GER", fotmobId = 54),
-        LeagueInfo(55, "Serie A", "Italy", "ITA", fotmobId = 55),
-        LeagueInfo(53, "Ligue 1", "France", "FRA", fotmobId = 53),
-        LeagueInfo(57, "Eredivisie", "Netherlands", "NED", fotmobId = 57),
-        LeagueInfo(223, "J. League", "Japan", "JPN", fotmobId = 223),
-        LeagueInfo(130, "MLS", "USA", "USA", fotmobId = 130),
-        LeagueInfo(268, "Brasileirão", "Brazil", "BRA", fotmobId = 268),
-        LeagueInfo(208, "Liga MX", "Mexico", "MEX", fotmobId = 208),
-        LeagueInfo(77, "FIFA World Cup", "International", "", fotmobId = 77),
-        LeagueInfo(322, "Copa América", "International", "", fotmobId = 322),
-        LeagueInfo(45, "Copa Libertadores", "International", "", fotmobId = 45),
-        LeagueInfo(299, "Copa Sudamericana", "International", "", fotmobId = 299)
-    ))
-
-    private fun saveLeagueDirectoryCache(context: Context, leagues: List<LeagueInfo>) {
-        if (leagues.isEmpty()) return
-        val array = JSONArray()
-        leagues.forEach { l ->
-            array.put(JSONObject().apply {
-                put("id", l.id)
-                put("name", l.name)
-                put("country", l.country)
-                put("ccode", l.ccode)
-                put("fotmobId", l.fotmobId)
-                put("sofascoreId", l.sofascoreId)
-            })
-        }
-        prefs(context).edit().putString(KEY_LEAGUE_DIRECTORY_CACHE, array.toString()).apply()
-    }
-
-    private fun loadLeagueDirectoryCache(context: Context): List<LeagueInfo> {
-        val raw = prefs(context).getString(KEY_LEAGUE_DIRECTORY_CACHE, null) ?: return emptyList()
-        return runCatching {
-            val array = JSONArray(raw)
-            buildList {
-                for (i in 0 until array.length()) {
-                    val o = array.optJSONObject(i) ?: continue
-                    val id = flexibleInt(o, "id")
-                    val name = o.optString("name")
-                    if (id == 0 || name.isBlank()) continue
-                    add(LeagueInfo(
-                        id = id,
-                        name = name,
-                        country = o.optString("country"),
-                        ccode = o.optString("ccode"),
-                        fotmobId = flexibleInt(o, "fotmobId").coerceAtLeast(0),
-                        sofascoreId = flexibleInt(o, "sofascoreId").coerceAtLeast(0)
-                    ))
-                }
-            }
-        }.getOrDefault(emptyList())
     }
 
     private fun sortLeagues(input: List<LeagueInfo>): List<LeagueInfo> = input.sortedWith(

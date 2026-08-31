@@ -592,11 +592,54 @@ object AdvancedStatsRepository {
 
     private fun extractFotMobLiveMinute(status: JSONObject): Int {
         val candidates = mutableListOf<String>()
-        candidates += status.optString("liveTime")
-        candidates += status.optString("reason")
-        val live = status.optJSONObject("liveTime")
-        if (live != null) { candidates += live.optString("short"); candidates += live.optString("long") }
-        for (c in candidates) c.filter { it.isDigit() }.toIntOrNull()?.let { if (it > 0) return it.coerceAtMost(130) }
+
+        val liveObject = status.optJSONObject("liveTime")
+        if (liveObject != null) {
+            candidates += liveObject.optString("short")
+            candidates += liveObject.optString("long")
+        }
+
+        val liveString = status.optString("liveTime")
+        if (liveString.isNotBlank() && !liveString.trim().startsWith("{")) {
+            candidates += liveString
+        }
+
+        candidates += fotMobReasonText(status)
+
+        // 45+2 / 90 + 4 / 105+1 などを先に解析する。
+        val addedTime = Regex("""(?<!\d)(\d{1,3})\s*['’]?\s*\+\s*(\d{1,2})""")
+        for (candidate in candidates) {
+            val match = addedTime.find(candidate) ?: continue
+            val base = match.groupValues[1].toIntOrNull() ?: continue
+            val extra = match.groupValues[2].toIntOrNull() ?: 0
+            val total = base + extra
+            if (total > 0) return total.coerceAtMost(130)
+        }
+
+        // 通常の 65' など。
+        val minuteWithQuote = Regex("""(?<!\d)(\d{1,3})\s*['’]""")
+        for (candidate in candidates) {
+            val minute = minuteWithQuote.find(candidate)
+                ?.groupValues?.getOrNull(1)?.toIntOrNull()
+            if (minute != null && minute > 0) {
+                return minute.coerceAtMost(130)
+            }
+        }
+
+        // 最後のフォールバック。
+        val plainMinute = Regex(
+            """(?<!\d)(\d{1,3})(?!\s*(?:st|nd|rd|th))""",
+            RegexOption.IGNORE_CASE
+        )
+
+        for (candidate in candidates) {
+            val minute = plainMinute.find(candidate)
+                ?.groupValues?.getOrNull(1)?.toIntOrNull()
+            if (minute != null && minute in 1..130) {
+                return minute
+            }
+        }
+
         return 0
     }
 

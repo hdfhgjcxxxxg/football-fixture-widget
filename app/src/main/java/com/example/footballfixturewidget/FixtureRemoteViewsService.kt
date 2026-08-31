@@ -123,7 +123,7 @@ private class FixtureFactory(
             }
             val form = extra?.recentForm?.take(5)?.joinToString(" ").orEmpty()
             val meta = listOf(
-                if (live != null) "LIVE ${live.liveMinute.coerceAtLeast(1)}'" else fixture?.competition.orEmpty(),
+                if (live != null) "LIVE ${formatLiveClock(live)}" else fixture?.competition.orEmpty(),
                 if (form.isNotBlank()) "直近5 $form" else ""
             ).filter(String::isNotBlank).joinToString(" • ")
             val bottom = when {
@@ -307,6 +307,73 @@ private class FixtureFactory(
         return views
     }
 
+
+    private fun formatLiveClock(live: RichEvent): String {
+        val raw = live.statusDescription.trim()
+        val description = raw.lowercase()
+        val minute = live.liveMinute.coerceAtLeast(1)
+
+        // Providerが45+2などを直接返している場合はそれを最優先。
+        Regex("""(?<!\d)(45|90|105|120)\s*['’]?\s*\+\s*(\d{1,2})""")
+            .find(raw)
+            ?.let { match ->
+                val base = match.groupValues[1]
+                val extra = match.groupValues[2]
+                return "$base+$extra'"
+            }
+
+        val halfTime =
+            description.contains("half time") ||
+            description.contains("half-time") ||
+            description.contains("halftime") ||
+            description == "ht"
+
+        if (halfTime) {
+            return if (minute > 45 && minute < 90) {
+                "45+${minute - 45}'"
+            } else {
+                "45'"
+            }
+        }
+
+        val firstHalf =
+            description.contains("1st half") ||
+            description.contains("first half") ||
+            description.contains("first-half")
+
+        val secondHalf =
+            description.contains("2nd half") ||
+            description.contains("second half") ||
+            description.contains("second-half")
+
+        val extraTimeFirst =
+            description.contains("1st extra") ||
+            description.contains("first extra") ||
+            description.contains("extra time first")
+
+        val extraTimeSecond =
+            description.contains("2nd extra") ||
+            description.contains("second extra") ||
+            description.contains("extra time second")
+
+        return when {
+            firstHalf && minute > 45 ->
+                "45+${minute - 45}'"
+
+            secondHalf && minute > 90 ->
+                "90+${minute - 90}'"
+
+            extraTimeFirst && minute > 105 ->
+                "105+${minute - 105}'"
+
+            extraTimeSecond && minute > 120 ->
+                "120+${minute - 120}'"
+
+            else ->
+                "${minute}'"
+        }
+    }
+
     private fun renderClock(views: RemoteViews, row: WidgetRow, fixture: NextFixture?) {
         val live = row.liveEvent
         val showDetail = WidgetSelectionStore.showDetailedCountdown(context, widgetId, kind)
@@ -321,20 +388,31 @@ private class FixtureFactory(
             live != null && live.isLive -> {
                 views.setViewVisibility(R.id.countdown_label, View.VISIBLE)
                 views.setViewVisibility(R.id.countdown, View.VISIBLE)
-                val paused = live.statusDescription.contains("half", true) || live.statusDescription.contains("break", true)
-                views.setTextViewText(R.id.countdown_label, if (paused) "HALF TIME" else "MATCH TIME")
-                if (paused) {
-                    views.setChronometer(R.id.countdown, SystemClock.elapsedRealtime(), "%s", false)
-                    views.setTextViewText(R.id.countdown, "HT")
-                } else if (showDetail) {
-                    val base = SystemClock.elapsedRealtime() - live.liveMinute.coerceAtLeast(1) * 60_000L
-                    views.setChronometer(R.id.countdown, base, "%s", true)
-                    views.setChronometerCountDown(R.id.countdown, false)
-                } else {
-                    views.setChronometer(R.id.countdown, SystemClock.elapsedRealtime(), "%s", false)
-                    views.setTextViewText(R.id.countdown, "${live.liveMinute.coerceAtLeast(1)}'")
-                }
+
+                val paused =
+                    live.statusDescription.contains("half", true) ||
+                    live.statusDescription.contains("break", true)
+
+                views.setTextViewText(
+                    R.id.countdown_label,
+                    if (paused) "HALF TIME" else "MATCH TIME"
+                )
+
+                // ライブ中は経過分をサッカー式で表示。
+                // 例: 65' / 45+2' / 90+4'
+                views.setChronometer(
+                    R.id.countdown,
+                    SystemClock.elapsedRealtime(),
+                    "%s",
+                    false
+                )
+
+                views.setTextViewText(
+                    R.id.countdown,
+                    formatLiveClock(live)
+                )
             }
+
             fixture?.hasMatch == true && fixture.utcDate.isNotBlank() -> {
                 val remaining = FixtureRepository.remainingMillis(fixture.utcDate)
                 if (remaining > 0L) {

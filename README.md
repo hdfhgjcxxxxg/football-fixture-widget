@@ -29,3 +29,7 @@ SofaScore may return HTTP 403 to unofficial clients. In **両方** mode this doe
 - Android 13+ notification permission and a retry-install button were added for update reliability.
 - The one-tap Termux flow verifies the GitHub Release SHA-256 before opening Android Package Installer.
 - Workflow run selection and Git clone error handling were hardened.
+
+
+## v12.9
+- Android 16/TermuxでPackage InstallerにAPKを渡した際の「パッケージの解析中に問題が発生しました」対策。Termux private領域を使わず、Download上の検証済みAPKから起動します。

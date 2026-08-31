@@ -1,0 +1,13 @@
+v12.9
+
+Changes
+- Keeps v12.8 team-widget layout: next match is the larger upper line, previous match is the smaller lower line.
+- Fixes Termux APK installer launch flow that could show "パッケージの解析中に問題が発生しました" on Android 16.
+- Never passes a Termux-private APK to Package Installer.
+- Uses the verified APK in public Download storage.
+- Prefers direct public file VIEW intent, then Termux content sharing only when allow-external-apps is already enabled.
+- Falls back to opening the Downloads folder instead of presenting an unreadable APK URI.
+
+Version
+- versionName 12.9
+- versionCode 2000000025

@@ -33,7 +33,10 @@ data class RichEvent(
     val customId: String,
     val liveMinute: Int = 0,
     val provider: String = DataSourceManager.SOFASCORE,
-    val providerUrl: String = ""
+    val providerUrl: String = "",
+    // Score used by team form/results. Penalty-shootout kicks are excluded.
+    val formHomeScore: Int? = homeScore,
+    val formAwayScore: Int? = awayScore
 ) {
     val isLive: Boolean
         get() {
@@ -131,7 +134,7 @@ data class LeagueRoundData(
 )
 
 object AdvancedStatsRepository {
-    private const val PREFS = "advanced_widget_cache_v11"
+    private const val PREFS = "advanced_widget_cache_v12_6"
     private const val TEAM_KEY = "team_extra"
     private const val PLAYER_KEY = "player_extra"
     private const val LEAGUE_KEY = "league_rounds"
@@ -276,8 +279,8 @@ object AdvancedStatsRepository {
         val next = nextEvents.filter { !it.isFinished }.minByOrNull { it.startTimestamp }
         val recent = lastEvents.filter { it.isFinished }.sortedByDescending { it.startTimestamp }.take(5).map { event ->
             val isHome = event.homeId == sofaId
-            val own = if (isHome) event.homeScore else event.awayScore
-            val opp = if (isHome) event.awayScore else event.homeScore
+            val own = if (isHome) event.formHomeScore else event.formAwayScore
+            val opp = if (isHome) event.formAwayScore else event.formHomeScore
             when {
                 own == null || opp == null -> "-"
                 own > opp -> "W${own}-${opp}"
@@ -297,8 +300,8 @@ object AdvancedStatsRepository {
         val next = events.filter { it.isScheduled }.minByOrNull { it.startTimestamp }
         val recent = events.filter { it.isFinished }.sortedByDescending { it.startTimestamp }.take(5).map { event ->
             val isHome = event.homeId == fmId
-            val own = if (isHome) event.homeScore else event.awayScore
-            val opp = if (isHome) event.awayScore else event.homeScore
+            val own = if (isHome) event.formHomeScore else event.formAwayScore
+            val opp = if (isHome) event.formAwayScore else event.formHomeScore
             when {
                 own == null || opp == null -> "-"
                 own > opp -> "W${own}-${opp}"
@@ -502,6 +505,11 @@ object AdvancedStatsRepository {
         val statusType = when { finished -> "finished"; started -> "inprogress"; else -> "scheduled" }
         val scoreHome = flexibleNullableInt(home.opt("score"))
         val scoreAway = flexibleNullableInt(away.opt("score"))
+        // In FotMob team history, home/away.score can include shootout kicks,
+        // while status.scoreStr remains the score before the shootout.
+        val scoreBeforeShootout = if (isFotMobPenaltyShootout(status)) parseScorePair(status.optString("scoreStr")) else null
+        val formScoreHome = scoreBeforeShootout?.first ?: scoreHome
+        val formScoreAway = scoreBeforeShootout?.second ?: scoreAway
         val league = o.optJSONObject("league")
         val competition = league?.optString("name").orEmpty()
             .ifBlank { o.optString("leagueName") }.ifBlank { o.optString("parentLeagueName") }
@@ -521,10 +529,46 @@ object AdvancedStatsRepository {
             homeName = home.optString("name").ifBlank { home.optString("longName") },
             awayName = away.optString("name").ifBlank { away.optString("longName") },
             homeId = firstInt(home, "id", "teamId"), awayId = firstInt(away, "id", "teamId"),
-            homeScore = scoreHome, awayScore = scoreAway, competition = competition,
+            homeScore = scoreHome, awayScore = scoreAway,
+            competition = competition,
             roundLabel = round, slug = "", customId = "", liveMinute = liveMinute,
-            provider = DataSourceManager.FOTMOB, providerUrl = url
+            provider = DataSourceManager.FOTMOB, providerUrl = url,
+            formHomeScore = formScoreHome, formAwayScore = formScoreAway
         )
+    }
+
+    private fun scoreWithoutShootout(score: JSONObject?): Int? {
+        if (score == null) return null
+        // `display` is the visible match score and excludes penalty-shootout kicks.
+        // Fall back through overtime/normaltime/current for older payload shapes.
+        return flexibleNullableInt(score.opt("display"))
+            ?: flexibleNullableInt(score.opt("overtime"))
+            ?: flexibleNullableInt(score.opt("normaltime"))
+            ?: flexibleNullableInt(score.opt("current"))
+    }
+
+    private fun isFotMobPenaltyShootout(status: JSONObject): Boolean {
+        val reason = status.opt("reason")
+        val pieces = when (reason) {
+            is String -> listOf(reason)
+            is JSONObject -> listOf(
+                reason.optString("short"), reason.optString("long"), reason.optString("name"),
+                reason.optString("shortKey"), reason.optString("longKey")
+            )
+            else -> emptyList()
+        }
+        return pieces.any { value ->
+            value.contains("penalt", ignoreCase = true) ||
+                value.equals("pen", ignoreCase = true) ||
+                value.contains("shootout", ignoreCase = true)
+        }
+    }
+
+    private fun parseScorePair(value: String): Pair<Int, Int>? {
+        val match = Regex("""(\d+)\s*[-–:]\s*(\d+)""").find(value) ?: return null
+        val home = match.groupValues.getOrNull(1)?.toIntOrNull() ?: return null
+        val away = match.groupValues.getOrNull(2)?.toIntOrNull() ?: return null
+        return home to away
     }
 
     private fun fotMobReasonText(status: JSONObject): String {
@@ -756,8 +800,14 @@ object AdvancedStatsRepository {
         val status = o.optJSONObject("status") ?: JSONObject()
         val tournament = o.optJSONObject("tournament") ?: JSONObject()
         val unique = tournament.optJSONObject("uniqueTournament")
-        val scoreHome = flexibleNullableInt(o.optJSONObject("homeScore")?.opt("current"))
-        val scoreAway = flexibleNullableInt(o.optJSONObject("awayScore")?.opt("current"))
+        val homeScoreObject = o.optJSONObject("homeScore")
+        val awayScoreObject = o.optJSONObject("awayScore")
+        val scoreHome = flexibleNullableInt(homeScoreObject?.opt("current"))
+        val scoreAway = flexibleNullableInt(awayScoreObject?.opt("current"))
+        // SofaScore keeps shootout goals in `current` but exposes the match score
+        // separately as `display` (and the shootout itself as `penalties`).
+        val formScoreHome = scoreWithoutShootout(homeScoreObject) ?: scoreHome
+        val formScoreAway = scoreWithoutShootout(awayScoreObject) ?: scoreAway
         val roundObj = o.optJSONObject("roundInfo")
         val round = roundObj?.optInt("round") ?: 0
         val roundName = roundObj?.optString("name").orEmpty().ifBlank { o.optString("roundName") }
@@ -783,7 +833,9 @@ object AdvancedStatsRepository {
             roundLabel = roundLabel,
             slug = o.optString("slug"),
             customId = o.optString("customId"),
-            liveMinute = liveMinute
+            liveMinute = liveMinute,
+            formHomeScore = formScoreHome,
+            formAwayScore = formScoreAway
         )
     }
 
@@ -862,16 +914,31 @@ object AdvancedStatsRepository {
         put("eventId", e.eventId); put("startTimestamp", e.startTimestamp); put("statusType", e.statusType); put("statusDescription", e.statusDescription)
         put("homeName", e.homeName); put("awayName", e.awayName); put("homeId", e.homeId); put("awayId", e.awayId)
         if (e.homeScore != null) put("homeScore", e.homeScore); if (e.awayScore != null) put("awayScore", e.awayScore)
+        if (e.formHomeScore != null) put("formHomeScore", e.formHomeScore); if (e.formAwayScore != null) put("formAwayScore", e.formAwayScore)
         put("competition", e.competition); put("roundLabel", e.roundLabel); put("slug", e.slug); put("customId", e.customId); put("liveMinute", e.liveMinute)
         put("provider", e.provider); put("providerUrl", e.providerUrl)
     }
 
     private fun eventFromJson(o: JSONObject): RichEvent = RichEvent(
-        o.optLong("eventId"), o.optLong("startTimestamp"), o.optString("statusType"), o.optString("statusDescription"),
-        o.optString("homeName"), o.optString("awayName"), o.optInt("homeId"), o.optInt("awayId"),
-        if (o.has("homeScore")) o.optInt("homeScore") else null, if (o.has("awayScore")) o.optInt("awayScore") else null,
-        o.optString("competition"), o.optString("roundLabel"), o.optString("slug"), o.optString("customId"), o.optInt("liveMinute"),
-        o.optString("provider").ifBlank { DataSourceManager.SOFASCORE }, o.optString("providerUrl")
+        eventId = o.optLong("eventId"),
+        startTimestamp = o.optLong("startTimestamp"),
+        statusType = o.optString("statusType"),
+        statusDescription = o.optString("statusDescription"),
+        homeName = o.optString("homeName"),
+        awayName = o.optString("awayName"),
+        homeId = o.optInt("homeId"),
+        awayId = o.optInt("awayId"),
+        homeScore = if (o.has("homeScore")) o.optInt("homeScore") else null,
+        awayScore = if (o.has("awayScore")) o.optInt("awayScore") else null,
+        competition = o.optString("competition"),
+        roundLabel = o.optString("roundLabel"),
+        slug = o.optString("slug"),
+        customId = o.optString("customId"),
+        liveMinute = o.optInt("liveMinute"),
+        provider = o.optString("provider").ifBlank { DataSourceManager.SOFASCORE },
+        providerUrl = o.optString("providerUrl"),
+        formHomeScore = if (o.has("formHomeScore")) o.optInt("formHomeScore") else if (o.has("homeScore")) o.optInt("homeScore") else null,
+        formAwayScore = if (o.has("formAwayScore")) o.optInt("formAwayScore") else if (o.has("awayScore")) o.optInt("awayScore") else null
     )
 
     private fun performanceToJson(p: PlayerPerformance): JSONObject = JSONObject().apply {

@@ -1,0 +1,9 @@
+v12.6
+- チームの直近5試合はPK戦の得点を除外し、通常時間＋延長終了時点のスコアでW/D/Lを表示
+- SofaScoreはhomeScore/awayScoreのdisplayを優先し、penaltiesをスコアへ混ぜない
+- FotMobはPK戦終了試合でstatus.scoreStrを使い、home/away.scoreに含まれるPK戦得点を除外
+- PK戦で2-2→PK5-4なら直近5はD2-2として表示
+- チームの前節結果では自分のチーム名を表示せず、相手チーム名のみ表示
+- 前節スコアはお気に入りチーム視点（得点-失点）で表示
+- v12.6用キャッシュへ切替え、旧版のPK込み直近5表示を引き継がない
+- versionCode 2000000022

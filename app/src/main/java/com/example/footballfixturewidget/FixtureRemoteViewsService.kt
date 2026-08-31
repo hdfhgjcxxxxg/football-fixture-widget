@@ -106,8 +106,9 @@ private class FixtureFactory(
             }
             val matchup = when {
                 live != null -> "${live.homeName} ${live.scoreText} ${live.awayName}"
-                last != null && next != null -> "前 ${last.homeName} ${last.scoreText} ${last.awayName}  •  次 ${if (next.homeId == extra.sofaTeamId) "vs ${next.awayName}" else "@ ${next.homeName}"}"
+                last != null && next != null -> "前節 ${teamOpponent(last, extra.sofaTeamId)} ${teamPerspectiveScore(last, extra.sofaTeamId)}  •  次 ${if (next.homeId == extra.sofaTeamId) "vs ${next.awayName}" else "@ ${next.homeName}"}"
                 fixture != null -> (if (fixture.isHome) "vs " else "@ ") + fixture.opponent
+                last != null -> "前節 ${teamOpponent(last, extra.sofaTeamId)} ${teamPerspectiveScore(last, extra.sofaTeamId)}"
                 else -> "日程を取得中"
             }
             val form = extra?.recentForm?.take(5)?.joinToString(" ").orEmpty()
@@ -118,12 +119,32 @@ private class FixtureFactory(
             val bottom = when {
                 live != null -> "試合中 • ${live.competition}"
                 next != null -> "次 ${FixtureRepository.formatDate(Instant.ofEpochSecond(next.startTimestamp).toString())}"
-                last != null -> "前試合 ${last.scoreText}"
+                last != null -> "前節 ${teamPerspectiveScore(last, extra.sofaTeamId)}"
                 fixture?.hasMatch == true -> FixtureRepository.formatDate(fixture.utcDate)
                 else -> "日時未定"
             }
             WidgetRow(team.id.toLong(), team.id, kind, team.name, matchup, meta, bottom, fixture, live, team = team)
         }
+    }
+
+    private fun teamOpponent(event: RichEvent, teamProviderId: Int): String = when (teamProviderId) {
+        event.homeId -> event.awayName
+        event.awayId -> event.homeName
+        else -> event.awayName.ifBlank { event.homeName }
+    }
+
+    private fun teamPerspectiveScore(event: RichEvent, teamProviderId: Int): String {
+        val own = when (teamProviderId) {
+            event.homeId -> event.formHomeScore
+            event.awayId -> event.formAwayScore
+            else -> null
+        }
+        val opponent = when (teamProviderId) {
+            event.homeId -> event.formAwayScore
+            event.awayId -> event.formHomeScore
+            else -> null
+        }
+        return if (own != null && opponent != null) "$own-$opponent" else "-"
     }
 
     private fun playerRows(selected: Set<Int>): List<WidgetRow> {

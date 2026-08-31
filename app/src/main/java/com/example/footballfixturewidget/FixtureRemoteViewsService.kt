@@ -104,12 +104,13 @@ private class FixtureFactory(
                 next != null -> mergeProviderLinks(next.asFixture(team.id, team.name, extra.sofaTeamId), normal)
                 else -> normal
             }
+            // Keep the previous result and the upcoming fixture visually separate.
+            // The matchup line is reserved for the previous result; the bottom line
+            // is reserved for the next fixture so users never read them as one block.
             val matchup = when {
                 live != null -> "${live.homeName} ${live.scoreText} ${live.awayName}"
-                last != null && next != null -> "前節 ${teamOpponent(last, extra.sofaTeamId)} ${teamPerspectiveScore(last, extra.sofaTeamId)}  •  次 ${if (next.homeId == extra.sofaTeamId) "vs ${next.awayName}" else "@ ${next.homeName}"}"
-                fixture != null -> (if (fixture.isHome) "vs " else "@ ") + fixture.opponent
                 last != null -> "前節 ${teamOpponent(last, extra.sofaTeamId)} ${teamPerspectiveScore(last, extra.sofaTeamId)}"
-                else -> "日程を取得中"
+                else -> "前節 結果なし"
             }
             val form = extra?.recentForm?.take(5)?.joinToString(" ").orEmpty()
             val meta = listOf(
@@ -118,10 +119,16 @@ private class FixtureFactory(
             ).filter(String::isNotBlank).joinToString(" • ")
             val bottom = when {
                 live != null -> "試合中 • ${live.competition}"
-                next != null -> "次 ${FixtureRepository.formatDate(Instant.ofEpochSecond(next.startTimestamp).toString())}"
-                last != null -> "前節 ${teamPerspectiveScore(last, extra.sofaTeamId)}"
-                fixture?.hasMatch == true -> FixtureRepository.formatDate(fixture.utcDate)
-                else -> "日時未定"
+                next != null -> {
+                    val opponent = if (next.homeId == extra.sofaTeamId) "vs ${next.awayName}" else "@ ${next.homeName}"
+                    val date = FixtureRepository.formatDate(Instant.ofEpochSecond(next.startTimestamp).toString())
+                    "次節 $opponent • $date"
+                }
+                fixture?.hasMatch == true -> {
+                    val opponent = (if (fixture.isHome) "vs " else "@ ") + fixture.opponent
+                    "次節 $opponent • ${FixtureRepository.formatDate(fixture.utcDate)}"
+                }
+                else -> "次節 日程未定"
             }
             WidgetRow(team.id.toLong(), team.id, kind, team.name, matchup, meta, bottom, fixture, live, team = team)
         }

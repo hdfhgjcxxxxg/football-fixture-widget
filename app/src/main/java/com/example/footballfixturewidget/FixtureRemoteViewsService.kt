@@ -111,6 +111,13 @@ private class FixtureFactory(
             val matchup = when {
                 live != null -> "${live.homeName} ${live.scoreText} ${live.awayName}"
                 next != null -> {
+                    val venue = when (extra.sofaTeamId) {
+                        next.homeId -> "H"
+                        next.awayId -> "A"
+                        else -> if (normal?.hasMatch == true) {
+                            if (normal.isHome) "H" else "A"
+                        } else "H"
+                    }
                     val opponent = when (extra.sofaTeamId) {
                         next.homeId -> next.awayName
                         next.awayId -> next.homeName
@@ -120,10 +127,10 @@ private class FixtureFactory(
                     val date = FixtureRepository.formatDate(
                         Instant.ofEpochSecond(next.startTimestamp).toString()
                     )
-                    "vs $opponent • $date"
+                    "$venue $opponent • $date"
                 }
                 fixture?.hasMatch == true -> {
-                    "vs ${fixture.opponent} • ${FixtureRepository.formatDate(fixture.utcDate)}"
+                    "${if (fixture.isHome) "H" else "A"} ${fixture.opponent} • ${FixtureRepository.formatDate(fixture.utcDate)}"
                 }
                 else -> "日程未定"
             }
@@ -177,7 +184,7 @@ private class FixtureFactory(
             }
             val matchup = when {
                 live != null -> "${live.homeName} ${live.scoreText} ${live.awayName}"
-                fixture != null -> (if (fixture.isHome) "vs " else "@ ") + fixture.opponent
+                fixture != null -> (if (fixture.isHome) "H " else "A ") + fixture.opponent
                 else -> "次の試合を取得中"
             }
             val ratings = extra?.recentRatings?.take(5)?.joinToString("  ").orEmpty()

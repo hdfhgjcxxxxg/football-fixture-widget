@@ -36,12 +36,32 @@ object EntityImageLoader {
     }
 
     fun loadLeague(context: Context, league: FavoriteLeague): Bitmap? {
+        val n = league.name.lowercase()
+        val isMensUcl =
+            n.contains("champions league") &&
+            !n.contains("women") &&
+            !n.contains("女子") &&
+            !n.contains("youth")
+
+        if (isMensUcl) {
+            // UEFA Champions Leagueを別大会IDから拾わないように完全固定。
+            // FotMob公式リーグID=42を優先し、SofaScore unique tournament ID=7を予備にする。
+            return load(
+                context,
+                "league_ucl_official_v1213",
+                listOf(
+                    "https://images.fotmob.com/image_resources/logo/leaguelogo/42.png",
+                    "https://img.sofascore.com/api/v1/unique-tournament/7/image"
+                )
+            )
+        }
+
         var urls = FavoriteEntityRepository.leagueImageUrls(league)
         if (urls.isEmpty() && DataSourceManager.getMode(context) != DataSourceManager.FOTMOB) {
             val sofaId = runCatching { FavoriteEntityRepository.resolveSofaLeagueId(league) }.getOrDefault(0)
             if (sofaId > 0) urls = listOf("https://img.sofascore.com/api/v1/unique-tournament/$sofaId/image")
         }
-        return load(context, "league_${league.id}_${DataSourceManager.getMode(context)}", urls)
+        return load(context, "league_v1213_${league.id}_${DataSourceManager.getMode(context)}", urls)
     }
 
     private fun load(context: Context, key: String, urls: List<String>): Bitmap? {

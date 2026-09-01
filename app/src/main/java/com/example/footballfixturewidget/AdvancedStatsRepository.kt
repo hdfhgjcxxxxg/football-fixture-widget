@@ -180,16 +180,32 @@ object AdvancedStatsRepository {
         val old = loadLeagueRounds(context)
         val out = LinkedHashMap<Int, LeagueRoundData>()
         val mode = DataSourceManager.getMode(context)
+
+        fun usable(block: () -> LeagueRoundData): LeagueRoundData? =
+            runCatching { block() }.getOrNull()?.takeIf { it.events.isNotEmpty() }
+
         leagues.forEach { league ->
             val data = when (mode) {
-                DataSourceManager.FOTMOB -> runCatching { fetchLeagueRoundFotMob(league) }.getOrNull()
-                DataSourceManager.SOFASCORE -> runCatching { fetchLeagueRound(league) }.getOrNull()
-                else -> runCatching { fetchLeagueRound(league) }.getOrNull()
-                    ?: runCatching { fetchLeagueRoundFotMob(league) }.getOrNull()
-            } ?: old[league.id]
+                DataSourceManager.FOTMOB ->
+                    usable { fetchLeagueRoundFotMob(league) }
+                        ?: usable { fetchLeagueRound(league) }
+
+                DataSourceManager.SOFASCORE ->
+                    usable { fetchLeagueRound(league) }
+                        ?: usable { fetchLeagueRoundFotMob(league) }
+
+                else ->
+                    usable { fetchLeagueRound(league) }
+                        ?: usable { fetchLeagueRoundFotMob(league) }
+            } ?: old[league.id]?.takeIf { it.events.isNotEmpty() }
+
             if (data != null) out[league.id] = data
         }
-        saveLeagueRounds(context, out)
+
+        val merged = LinkedHashMap<Int, LeagueRoundData>()
+        old.forEach { (id, value) -> merged[id] = value }
+        out.forEach { (id, value) -> merged[id] = value }
+        saveLeagueRounds(context, merged)
         return out
     }
 

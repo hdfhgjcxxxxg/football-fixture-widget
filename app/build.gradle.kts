@@ -10,7 +10,7 @@ android {
         applicationId = "com.example.footballfixturewidget"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2000000029
+        versionCode = 2000000030
         versionName = "12.13"
     }
 

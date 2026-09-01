@@ -111,15 +111,21 @@ private class FixtureFactory(
             val matchup = when {
                 live != null -> "${live.homeName} ${live.scoreText} ${live.awayName}"
                 next != null -> {
-                    val opponent = if (next.homeId == extra.sofaTeamId) "vs ${next.awayName}" else "@ ${next.homeName}"
-                    val date = FixtureRepository.formatDate(Instant.ofEpochSecond(next.startTimestamp).toString())
-                    "次節 $opponent • $date"
+                    val opponent = when (extra.sofaTeamId) {
+                        next.homeId -> next.awayName
+                        next.awayId -> next.homeName
+                        else -> normal?.opponent?.takeIf { it.isNotBlank() }
+                            ?: next.awayName.ifBlank { next.homeName }
+                    }
+                    val date = FixtureRepository.formatDate(
+                        Instant.ofEpochSecond(next.startTimestamp).toString()
+                    )
+                    "vs $opponent • $date"
                 }
                 fixture?.hasMatch == true -> {
-                    val opponent = (if (fixture.isHome) "vs " else "@ ") + fixture.opponent
-                    "次節 $opponent • ${FixtureRepository.formatDate(fixture.utcDate)}"
+                    "vs ${fixture.opponent} • ${FixtureRepository.formatDate(fixture.utcDate)}"
                 }
-                else -> "次節 日程未定"
+                else -> "日程未定"
             }
             val form = extra?.recentForm?.take(5)?.joinToString(" ").orEmpty()
             val meta = listOf(

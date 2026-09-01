@@ -58,6 +58,15 @@ object SupplementalWidgetRepository {
     fun refreshLeagues(context: Context): List<LeagueFixtureItem> {
         val leagues = FavoriteEntityRepository.getFavoriteLeagues(context)
         val rich = AdvancedStatsRepository.refreshLeagueRounds(context, leagues)
+        runCatching {
+            leagues.firstOrNull {
+                val n = it.name.lowercase()
+                n.contains("champions league") &&
+                    !n.contains("women") &&
+                    !n.contains("女子") &&
+                    !n.contains("youth")
+            }?.let { EntityImageLoader.loadLeague(context, it) }
+        }
         val previous = loadLeagueCache(context).associateBy { it.leagueId }
         val items = leagues.map { league ->
             val event = rich[league.id]?.events?.firstOrNull { it.isLive }

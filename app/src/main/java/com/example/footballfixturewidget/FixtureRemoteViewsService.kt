@@ -202,13 +202,27 @@ private class FixtureFactory(
     }
 
     private fun leagueRows(selected: Set<Int>): List<WidgetRow> {
-        val favorites = FavoriteEntityRepository.getFavoriteLeagues(context).associateBy { it.id }
+        val favoritesList = FavoriteEntityRepository.getFavoriteLeagues(context)
+        val favoritesById = favoritesList.associateBy { it.id }
         val rounds = AdvancedStatsRepository.loadLeagueRounds(context)
         val fallback = SupplementalWidgetRepository.loadLeagueCache(context).associateBy { it.leagueId }
         val out = mutableListOf<WidgetRow>()
-        selected.forEach { id ->
-            val league = favorites[id] ?: return@forEach
-            val data = rounds[id]
+        val added = HashSet<Int>()
+
+        fun resolveLeague(selectedId: Int): FavoriteLeague? {
+            favoritesById[selectedId]?.let { return it }
+            return favoritesList.firstOrNull { league ->
+                (league.fotmobId > 0 && league.fotmobId == selectedId) ||
+                    (league.sofascoreId > 0 &&
+                        (league.sofascoreId == selectedId || -league.sofascoreId == selectedId))
+            }
+        }
+
+        selected.forEach { selectedId ->
+            val league = resolveLeague(selectedId) ?: return@forEach
+            if (!added.add(league.id)) return@forEach
+
+            val data = rounds[league.id] ?: rounds[selectedId]
             if (data != null && data.events.isNotEmpty()) {
                 data.events.forEach { event ->
                     val fixture = event.asFixture(-league.id, league.name)
@@ -224,19 +238,29 @@ private class FixtureFactory(
                         title = "${league.name} • ${data.roundLabel}",
                         matchup = "${event.homeName} vs ${event.awayName}",
                         meta = state,
-                        bottom = if (event.startTimestamp > 0L) FixtureRepository.formatDate(Instant.ofEpochSecond(event.startTimestamp).toString()) else "日時未定",
+                        bottom = if (event.startTimestamp > 0L)
+                            FixtureRepository.formatDate(Instant.ofEpochSecond(event.startTimestamp).toString())
+                        else "日時未定",
                         fixture = fixture,
                         liveEvent = event,
                         league = league
                     )
                 }
             } else {
-                val fixture = fallback[id]?.fixture
+                val fixture = (fallback[league.id] ?: fallback[selectedId])?.fixture
                 out += WidgetRow(
-                    rowId = -league.id.toLong(), entityId = league.id, kind = kind,
-                    title = league.name, matchup = fixture?.opponent ?: "節データを取得中",
-                    meta = league.country, bottom = fixture?.utcDate?.takeIf(String::isNotBlank)?.let(FixtureRepository::formatDate) ?: "更新してください",
-                    fixture = fixture, league = league
+                    rowId = -league.id.toLong(),
+                    entityId = league.id,
+                    kind = kind,
+                    title = league.name,
+                    matchup = fixture?.opponent ?: "節データを取得中",
+                    meta = league.country,
+                    bottom = fixture?.utcDate
+                        ?.takeIf(String::isNotBlank)
+                        ?.let(FixtureRepository::formatDate)
+                        ?: "更新してください",
+                    fixture = fixture,
+                    league = league
                 )
             }
         }
@@ -278,7 +302,7 @@ private class FixtureFactory(
 
         val logo = when (row.kind) {
             WidgetKinds.PLAYER -> row.player?.let { EntityImageLoader.loadPlayer(context, it) }
-            WidgetKinds.LEAGUE -> row.league?.let { EntityImageLoader.loadLeague(context, it) }
+            WidgetKinds.LEAGUE -> row.league?.let { EntityImageLoader.loadLeagueCached(context, it) }
             else -> row.team?.let { TeamLogoLoader.load(context, it) }
         }
         if (logo != null) {

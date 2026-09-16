@@ -163,37 +163,10 @@ abstract class BaseFavoriteWidgetProvider : AppWidgetProvider() {
                 try {
                     when (kind) {
                         WidgetKinds.PLAYER -> SupplementalWidgetRepository.refreshPlayers(context.applicationContext)
-                        WidgetKinds.LEAGUE -> {
-                            val manager = AppWidgetManager.getInstance(context.applicationContext)
-                            val widgetIds = manager.getAppWidgetIds(
-                                ComponentName(context.applicationContext, providerClass())
-                            )
-                            val selectedLeagueIds = widgetIds
-                                .flatMap { widgetId ->
-                                    WidgetSelectionStore.getSelectedIds(
-                                        context.applicationContext,
-                                        widgetId,
-                                        WidgetKinds.LEAGUE
-                                    )
-                                }
-                                .toSet()
-
-                            SupplementalWidgetRepository.refreshLeagues(
-                                context.applicationContext,
-                                selectedLeagueIds
-                            )
-                        }
+                        WidgetKinds.LEAGUE -> SupplementalWidgetRepository.refreshLeagues(context.applicationContext)
                         else -> FixtureRepository.fetchAll(context.applicationContext)
                     }
                     WidgetRenderer.renderAll(context.applicationContext, providerClass(), kind)
-                } catch (t: Throwable) {
-                    RuntimeCrashStore.record(context.applicationContext, "widget-refresh-$kind", t)
-                    WidgetRenderer.renderAll(
-                        context.applicationContext,
-                        providerClass(),
-                        kind,
-                        "更新失敗"
-                    )
                 } finally {
                     pending.finish()
                 }

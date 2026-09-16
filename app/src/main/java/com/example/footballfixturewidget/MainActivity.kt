@@ -58,7 +58,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var autoUpdateSwitch: MaterialSwitch
     private lateinit var updateStatus: TextView
     private lateinit var checkUpdateButton: MaterialButton
-    private lateinit var installUpdateButton: MaterialButton
     private lateinit var progress: ProgressBar
     private lateinit var saveButton: MaterialButton
 
@@ -109,9 +108,8 @@ class MainActivity : AppCompatActivity() {
             refreshPlayerFavoritesUi()
             refreshLeagueFavoritesUi()
 
-            // No automatic SofaScore request here. This is the key safe-start change.
-            apiBadge.text = "待機中"
-            apiStatus.text = "取得元: ${DataSourceManager.label(this)} • 「接続を確認」で接続します"
+            // Show saved/known choices without any network request during startup.
+            showAvailableOfflineLeagues()
             setBusy(false)
         } catch (t: Throwable) {
             RuntimeCrashStore.record(this, "MainActivity.onCreate", t)
@@ -163,7 +161,6 @@ class MainActivity : AppCompatActivity() {
         autoUpdateSwitch = findViewById(R.id.auto_update_switch)
         updateStatus = findViewById(R.id.update_status)
         checkUpdateButton = findViewById(R.id.check_update_button)
-        installUpdateButton = findViewById(R.id.install_update_button)
         progress = findViewById(R.id.progress)
         saveButton = findViewById(R.id.save_button)
     }
@@ -193,9 +190,7 @@ class MainActivity : AppCompatActivity() {
             selectedFavoriteLeague = null
             apiBadge.text = "待機中"
             apiStatus.text = "取得元: ${DataSourceManager.label(mode)} • 接続を確認してください"
-            leagueOptions = emptyList()
-            leagueDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, emptyList<String>()))
-            favoriteLeagueDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, emptyList<String>()))
+            showAvailableOfflineLeagues()
         }
     }
 
@@ -368,41 +363,14 @@ class MainActivity : AppCompatActivity() {
         updateStatus.text = "現在 v${BuildConfig.VERSION_NAME} • 12時間ごとに更新確認"
         autoUpdateSwitch.setOnCheckedChangeListener { _, checked ->
             UpdateManager.setAutoEnabled(this, checked)
-            if (checked) requestNotificationPermissionIfNeeded()
             updateStatus.text = if (checked) "自動確認ON • 新版APKを自動ダウンロード" else "自動確認OFF"
-            refreshDownloadedUpdateUi()
         }
-        checkUpdateButton.setOnClickListener {
-            requestNotificationPermissionIfNeeded()
-            checkForUpdateManually()
-        }
-        installUpdateButton.setOnClickListener {
-            startActivity(Intent(this, UpdateInstallActivity::class.java))
-        }
+        checkUpdateButton.setOnClickListener { checkForUpdateManually() }
 
         if (autoUpdateSwitch.isChecked) {
-            requestNotificationPermissionIfNeeded()
             // Schedule the periodic check, but do not make a network request during
             // Activity startup. This prevents updater/network failures from affecting launch.
             runCatching { UpdateManager.schedule(this) }
-        }
-        refreshDownloadedUpdateUi()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (::installUpdateButton.isInitialized) refreshDownloadedUpdateUi()
-    }
-
-    private fun refreshDownloadedUpdateUi() {
-        val file = runCatching { UpdateManager.downloadedFile(this) }.getOrNull()
-        if (file != null) {
-            installUpdateButton.visibility = View.VISIBLE
-            val version = UpdateManager.downloadedVersionName(this)?.let { " v$it" }.orEmpty()
-            installUpdateButton.text = "ダウンロード済み$version をインストール"
-            updateStatus.text = "更新APKを検証済み • インストールできます"
-        } else {
-            installUpdateButton.visibility = View.GONE
         }
     }
 
@@ -435,6 +403,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showAvailableOfflineLeagues() {
+        val (leagues, source) = FixtureRepository.savedOrStarterLeagueDirectory(this)
+        if (leagues.isNotEmpty()) {
+            applyLeagueDirectory(leagues, false, source)
+        } else {
+            leagueOptions = emptyList()
+            leagueDropdown.setAdapter(createUnfilteredAdapter(emptyList()))
+            favoriteLeagueDropdown.setAdapter(createUnfilteredAdapter(emptyList()))
+            apiBadge.text = "待機中"
+            apiStatus.text = "${DataSourceManager.label(this)} • 保存データなし。接続を確認してください"
+        }
+    }
+
     private fun migrateAndLoadLeagues() {
         setBusy(true)
         Thread {
@@ -443,13 +424,20 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 setBusy(false)
                 if (migrated) refreshFavoritesUi()
-                result.onSuccess { applyLeagueDirectory(it, false) }
-                    .onFailure {
-                        apiBadge.text = "再試行"
-                        apiStatus.text = "リーグ一覧を取得できません • ${DataSourceManager.label(this)} を再確認してください"
-                    }
+                result.onSuccess {
+                    FixtureRepository.saveLeagueDirectory(this, it)
+                    applyLeagueDirectory(it, false)
+                }.onFailure { showLeagueDirectoryFailure(it) }
             }
         }.start()
+    }
+
+    private fun showLeagueDirectoryFailure(error: Throwable) {
+        if (leagueOptions.isEmpty()) showAvailableOfflineLeagues()
+        apiBadge.text = "取得失敗"
+        val suffix = if (leagueOptions.isNotEmpty()) "保存/標準リストから選択可能" else "保存データなし"
+        apiStatus.text = "${DataSourceManager.label(this)}: ${error.message ?: "通信エラー"} • $suffix"
+        toast("リーグの最新一覧は取得できませんでした。$suffix")
     }
 
     private fun loadLeagueDirectory(showSuccessToast: Boolean) {
@@ -459,28 +447,33 @@ class MainActivity : AppCompatActivity() {
             val result = runCatching { FixtureRepository.fetchLeagueDirectory() }
             runOnUiThread {
                 setBusy(false)
-                result.onSuccess { applyLeagueDirectory(it, showSuccessToast) }
-                    .onFailure {
-                        apiBadge.text = "エラー"
-                        apiStatus.text = "接続失敗 • ${it.message ?: "通信エラー"}"
-                        toast("リーグ一覧の取得に失敗しました")
-                    }
+                result.onSuccess {
+                    FixtureRepository.saveLeagueDirectory(this, it)
+                    applyLeagueDirectory(it, showSuccessToast)
+                }.onFailure { showLeagueDirectoryFailure(it) }
             }
         }.start()
     }
 
-    private fun applyLeagueDirectory(leagues: List<LeagueInfo>, showToast: Boolean) {
+    private fun applyLeagueDirectory(leagues: List<LeagueInfo>, showToast: Boolean, offlineSource: String? = null) {
         leagueOptions = leagues
         selectedLeague = null
         selectedFavoriteLeague = null
         val labels = leagues.map { it.label }
-        leagueDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, labels))
+        leagueDropdown.threshold = 0
+        favoriteLeagueDropdown.threshold = 0
+        leagueDropdown.setAdapter(createUnfilteredAdapter(labels))
         leagueDropdown.setText("", false)
-        favoriteLeagueDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, labels))
+        favoriteLeagueDropdown.setAdapter(createUnfilteredAdapter(labels))
         favoriteLeagueDropdown.setText("", false)
-        apiBadge.text = "接続済み"
-        apiStatus.text = "${DataSourceManager.label(this)} • ${leagues.size}リーグ/大会"
-        if (showToast) toast("接続OK：${leagues.size}大会を取得しました")
+        if (offlineSource == null) {
+            apiBadge.text = "一覧取得済み"
+            apiStatus.text = "${DataSourceManager.label(this)} • ${leagues.size}リーグ/大会（最新一覧）"
+            if (showToast) toast("${leagues.size}大会を取得しました")
+        } else {
+            apiBadge.text = "オフライン"
+            apiStatus.text = "${DataSourceManager.label(this)} • $offlineSource ${leagues.size}件 • 最新の一覧は未確認"
+        }
     }
 
     private fun loadTeamsForLeague(league: LeagueInfo) {

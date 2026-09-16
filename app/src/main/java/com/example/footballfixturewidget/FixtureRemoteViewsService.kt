@@ -47,44 +47,11 @@ private class FixtureFactory(
 
     override fun onDataSetChanged() {
         val selected = WidgetSelectionStore.getSelectedIds(context, widgetId, kind).toSet()
-        val baseRows = when (kind) {
+        rows = when (kind) {
             WidgetKinds.PLAYER -> playerRows(selected)
             WidgetKinds.LEAGUE -> leagueRows(selected)
             else -> teamRows(selected)
         }
-        rows = enrichTapProviderLinks(baseRows)
-    }
-
-    /**
-     * Player/league rows can come from SofaScore even when the user's tap target is
-     * FotMob. Resolve the same fixture on the selected provider by kickoff + teams so
-     * the row opens the exact match instead of merely launching the app home screen.
-     */
-    private fun enrichTapProviderLinks(input: List<WidgetRow>): List<WidgetRow> {
-        val target = FixtureRepository.getTapTarget(context)
-        if (target != FixtureRepository.TAP_FOTMOB && target != FixtureRepository.TAP_SOFASCORE) return input
-
-        val indexedFixtures = input.mapIndexedNotNull { index, row -> row.fixture?.let { index to it } }
-        if (indexedFixtures.isEmpty()) return input
-
-        val needsResolution = indexedFixtures.any { (_, fixture) ->
-            when (target) {
-                FixtureRepository.TAP_FOTMOB -> fixture.fotmobMatchId <= 0L || fixture.fotmobUrl.isBlank()
-                FixtureRepository.TAP_SOFASCORE -> fixture.sofascoreEventId <= 0L || fixture.sofascoreUrl.isBlank()
-                else -> false
-            }
-        }
-        if (!needsResolution) return input
-
-        val resolved = runCatching {
-            ExternalMatchResolver.resolveForTarget(indexedFixtures.map { it.second }, target)
-        }.getOrNull() ?: return input
-
-        val replacement = HashMap<Int, NextFixture>()
-        indexedFixtures.forEachIndexed { resolvedIndex, pair ->
-            resolved.getOrNull(resolvedIndex)?.let { replacement[pair.first] = it }
-        }
-        return input.mapIndexed { index, row -> replacement[index]?.let { row.copy(fixture = it) } ?: row }
     }
 
     private fun teamRows(selected: Set<Int>): List<WidgetRow> {
@@ -94,7 +61,7 @@ private class FixtureFactory(
         return selected.mapNotNull { id ->
             val team = favorites[id] ?: return@mapNotNull null
             val extra = extras[id]
-            val live = extra?.live?.takeIf { it.isLive }
+            val live = extra?.live
             val next = extra?.next
             val last = extra?.last
             val normal = normalCache[id]
@@ -104,68 +71,26 @@ private class FixtureFactory(
                 next != null -> mergeProviderLinks(next.asFixture(team.id, team.name, extra.sofaTeamId), normal)
                 else -> normal
             }
-            // Keep the previous result and the upcoming fixture visually separate.
-            // v12.8 swaps their positions and visual emphasis: the bigger upper line
-            // now shows the next fixture, while the smaller lower line shows the
-            // previous result.
             val matchup = when {
                 live != null -> "${live.homeName} ${live.scoreText} ${live.awayName}"
-                next != null -> {
-                    val venue = when (extra.sofaTeamId) {
-                        next.homeId -> "H."
-                        next.awayId -> "A."
-                        else -> if (normal?.hasMatch == true) {
-                            if (normal.isHome) "H." else "A."
-                        } else "H."
-                    }
-                    val opponent = when (extra.sofaTeamId) {
-                        next.homeId -> next.awayName
-                        next.awayId -> next.homeName
-                        else -> normal?.opponent?.takeIf { it.isNotBlank() }
-                            ?: next.awayName.ifBlank { next.homeName }
-                    }
-                    val date = FixtureRepository.formatDate(
-                        Instant.ofEpochSecond(next.startTimestamp).toString()
-                    )
-                    "$venue $opponent • $date"
-                }
-                fixture?.hasMatch == true -> {
-                    "${if (fixture.isHome) "H." else "A."} ${fixture.opponent} • ${FixtureRepository.formatDate(fixture.utcDate)}"
-                }
-                else -> "日程未定"
+                last != null && next != null -> "前 ${last.homeName} ${last.scoreText} ${last.awayName}  •  次 ${if (next.homeId == extra.sofaTeamId) "vs ${next.awayName}" else "@ ${next.homeName}"}"
+                fixture != null -> (if (fixture.isHome) "vs " else "@ ") + fixture.opponent
+                else -> "日程を取得中"
             }
             val form = extra?.recentForm?.take(5)?.joinToString(" ").orEmpty()
             val meta = listOf(
-                if (live != null) "LIVE ${formatLiveClock(live)}" else fixture?.competition.orEmpty(),
+                if (live != null) "LIVE ${live.liveMinute.coerceAtLeast(1)}'" else fixture?.competition.orEmpty(),
                 if (form.isNotBlank()) "直近5 $form" else ""
             ).filter(String::isNotBlank).joinToString(" • ")
             val bottom = when {
                 live != null -> "試合中 • ${live.competition}"
-                last != null -> "前節 ${teamOpponent(last, extra.sofaTeamId)} ${teamPerspectiveScore(last, extra.sofaTeamId)}"
-                else -> "前節 結果なし"
+                next != null -> "次 ${FixtureRepository.formatDate(Instant.ofEpochSecond(next.startTimestamp).toString())}"
+                last != null -> "前試合 ${last.scoreText}"
+                fixture?.hasMatch == true -> FixtureRepository.formatDate(fixture.utcDate)
+                else -> "日時未定"
             }
             WidgetRow(team.id.toLong(), team.id, kind, team.name, matchup, meta, bottom, fixture, live, team = team)
         }
-    }
-
-    private fun teamOpponent(event: RichEvent, teamProviderId: Int): String = when (teamProviderId) {
-        event.homeId -> event.awayName
-        event.awayId -> event.homeName
-        else -> event.awayName.ifBlank { event.homeName }
-    }
-
-    private fun teamPerspectiveScore(event: RichEvent, teamProviderId: Int): String {
-        val own = when (teamProviderId) {
-            event.homeId -> event.formHomeScore
-            event.awayId -> event.formAwayScore
-            else -> null
-        }
-        val opponent = when (teamProviderId) {
-            event.homeId -> event.formAwayScore
-            event.awayId -> event.formHomeScore
-            else -> null
-        }
-        return if (own != null && opponent != null) "$own-$opponent" else "-"
     }
 
     private fun playerRows(selected: Set<Int>): List<WidgetRow> {
@@ -175,7 +100,7 @@ private class FixtureFactory(
         return selected.mapNotNull { id ->
             val player = favorites[id] ?: return@mapNotNull null
             val extra = extras[id]
-            val live = extra?.live?.takeIf { it.isLive }
+            val live = extra?.live
             val next = extra?.next
             val fixture = when {
                 live != null -> live.asFixture(player.id, player.name, extra.sofaTeamId)
@@ -184,7 +109,7 @@ private class FixtureFactory(
             }
             val matchup = when {
                 live != null -> "${live.homeName} ${live.scoreText} ${live.awayName}"
-                fixture != null -> (if (fixture.isHome) "H. " else "A. ") + fixture.opponent
+                fixture != null -> (if (fixture.isHome) "vs " else "@ ") + fixture.opponent
                 else -> "次の試合を取得中"
             }
             val ratings = extra?.recentRatings?.take(5)?.joinToString("  ").orEmpty()
@@ -215,27 +140,13 @@ private class FixtureFactory(
     }
 
     private fun leagueRows(selected: Set<Int>): List<WidgetRow> {
-        val favoritesList = FavoriteEntityRepository.getFavoriteLeagues(context)
-        val favoritesById = favoritesList.associateBy { it.id }
+        val favorites = FavoriteEntityRepository.getFavoriteLeagues(context).associateBy { it.id }
         val rounds = AdvancedStatsRepository.loadLeagueRounds(context)
         val fallback = SupplementalWidgetRepository.loadLeagueCache(context).associateBy { it.leagueId }
         val out = mutableListOf<WidgetRow>()
-        val added = HashSet<Int>()
-
-        fun resolveLeague(selectedId: Int): FavoriteLeague? {
-            favoritesById[selectedId]?.let { return it }
-            return favoritesList.firstOrNull { league ->
-                (league.fotmobId > 0 && league.fotmobId == selectedId) ||
-                    (league.sofascoreId > 0 &&
-                        (league.sofascoreId == selectedId || -league.sofascoreId == selectedId))
-            }
-        }
-
-        selected.forEach { selectedId ->
-            val league = resolveLeague(selectedId) ?: return@forEach
-            if (!added.add(league.id)) return@forEach
-
-            val data = rounds[league.id] ?: rounds[selectedId]
+        selected.forEach { id ->
+            val league = favorites[id] ?: return@forEach
+            val data = rounds[id]
             if (data != null && data.events.isNotEmpty()) {
                 data.events.forEach { event ->
                     val fixture = event.asFixture(-league.id, league.name)
@@ -251,29 +162,19 @@ private class FixtureFactory(
                         title = "${league.name} • ${data.roundLabel}",
                         matchup = "${event.homeName} vs ${event.awayName}",
                         meta = state,
-                        bottom = if (event.startTimestamp > 0L)
-                            FixtureRepository.formatDate(Instant.ofEpochSecond(event.startTimestamp).toString())
-                        else "日時未定",
+                        bottom = if (event.startTimestamp > 0L) FixtureRepository.formatDate(Instant.ofEpochSecond(event.startTimestamp).toString()) else "日時未定",
                         fixture = fixture,
                         liveEvent = event,
                         league = league
                     )
                 }
             } else {
-                val fixture = (fallback[league.id] ?: fallback[selectedId])?.fixture
+                val fixture = fallback[id]?.fixture
                 out += WidgetRow(
-                    rowId = -league.id.toLong(),
-                    entityId = league.id,
-                    kind = kind,
-                    title = league.name,
-                    matchup = fixture?.opponent ?: "節データを取得中",
-                    meta = league.country,
-                    bottom = fixture?.utcDate
-                        ?.takeIf(String::isNotBlank)
-                        ?.let(FixtureRepository::formatDate)
-                        ?: "更新してください",
-                    fixture = fixture,
-                    league = league
+                    rowId = -league.id.toLong(), entityId = league.id, kind = kind,
+                    title = league.name, matchup = fixture?.opponent ?: "節データを取得中",
+                    meta = league.country, bottom = fixture?.utcDate?.takeIf(String::isNotBlank)?.let(FixtureRepository::formatDate) ?: "更新してください",
+                    fixture = fixture, league = league
                 )
             }
         }
@@ -315,7 +216,7 @@ private class FixtureFactory(
 
         val logo = when (row.kind) {
             WidgetKinds.PLAYER -> row.player?.let { EntityImageLoader.loadPlayer(context, it) }
-            WidgetKinds.LEAGUE -> row.league?.let { EntityImageLoader.loadLeagueCached(context, it) }
+            WidgetKinds.LEAGUE -> row.league?.let { EntityImageLoader.loadLeague(context, it) }
             else -> row.team?.let { TeamLogoLoader.load(context, it) }
         }
         if (logo != null) {
@@ -344,112 +245,27 @@ private class FixtureFactory(
         return views
     }
 
-
-    private fun formatLiveClock(live: RichEvent): String {
-        val raw = live.statusDescription.trim()
-        val description = raw.lowercase()
-        val minute = live.liveMinute.coerceAtLeast(1)
-
-        // Providerが45+2などを直接返している場合はそれを最優先。
-        Regex("""(?<!\d)(45|90|105|120)\s*['’]?\s*\+\s*(\d{1,2})""")
-            .find(raw)
-            ?.let { match ->
-                val base = match.groupValues[1]
-                val extra = match.groupValues[2]
-                return "$base+$extra'"
-            }
-
-        val halfTime =
-            description.contains("half time") ||
-            description.contains("half-time") ||
-            description.contains("halftime") ||
-            description == "ht"
-
-        if (halfTime) {
-            return if (minute > 45 && minute < 90) {
-                "45+${minute - 45}'"
-            } else {
-                "45'"
-            }
-        }
-
-        val firstHalf =
-            description.contains("1st half") ||
-            description.contains("first half") ||
-            description.contains("first-half")
-
-        val secondHalf =
-            description.contains("2nd half") ||
-            description.contains("second half") ||
-            description.contains("second-half")
-
-        val extraTimeFirst =
-            description.contains("1st extra") ||
-            description.contains("first extra") ||
-            description.contains("extra time first")
-
-        val extraTimeSecond =
-            description.contains("2nd extra") ||
-            description.contains("second extra") ||
-            description.contains("extra time second")
-
-        return when {
-            firstHalf && minute > 45 ->
-                "45+${minute - 45}'"
-
-            secondHalf && minute > 90 ->
-                "90+${minute - 90}'"
-
-            extraTimeFirst && minute > 105 ->
-                "105+${minute - 105}'"
-
-            extraTimeSecond && minute > 120 ->
-                "120+${minute - 120}'"
-
-            else ->
-                "${minute}'"
-        }
-    }
-
     private fun renderClock(views: RemoteViews, row: WidgetRow, fixture: NextFixture?) {
         val live = row.liveEvent
         val showDetail = WidgetSelectionStore.showDetailedCountdown(context, widgetId, kind)
         when {
-            live != null && live.isFinished -> {
-                views.setViewVisibility(R.id.countdown_label, View.VISIBLE)
-                views.setViewVisibility(R.id.countdown, View.VISIBLE)
-                views.setTextViewText(R.id.countdown_label, "FULL TIME")
-                views.setChronometer(R.id.countdown, SystemClock.elapsedRealtime(), "%s", false)
-                views.setTextViewText(R.id.countdown, "FT")
-            }
             live != null && live.isLive -> {
                 views.setViewVisibility(R.id.countdown_label, View.VISIBLE)
                 views.setViewVisibility(R.id.countdown, View.VISIBLE)
-
-                val paused =
-                    live.statusDescription.contains("half", true) ||
-                    live.statusDescription.contains("break", true)
-
-                views.setTextViewText(
-                    R.id.countdown_label,
-                    if (paused) "HALF TIME" else "MATCH TIME"
-                )
-
-                // ライブ中は経過分をサッカー式で表示。
-                // 例: 65' / 45+2' / 90+4'
-                views.setChronometer(
-                    R.id.countdown,
-                    SystemClock.elapsedRealtime(),
-                    "%s",
-                    false
-                )
-
-                views.setTextViewText(
-                    R.id.countdown,
-                    formatLiveClock(live)
-                )
+                val paused = live.statusDescription.contains("half", true) || live.statusDescription.contains("break", true)
+                views.setTextViewText(R.id.countdown_label, if (paused) "HALF TIME" else "MATCH TIME")
+                if (paused) {
+                    views.setChronometer(R.id.countdown, SystemClock.elapsedRealtime(), "%s", false)
+                    views.setTextViewText(R.id.countdown, "HT")
+                } else if (showDetail) {
+                    val base = SystemClock.elapsedRealtime() - live.liveMinute.coerceAtLeast(1) * 60_000L
+                    views.setChronometer(R.id.countdown, base, "%s", true)
+                    views.setChronometerCountDown(R.id.countdown, false)
+                } else {
+                    views.setChronometer(R.id.countdown, SystemClock.elapsedRealtime(), "%s", false)
+                    views.setTextViewText(R.id.countdown, "${live.liveMinute.coerceAtLeast(1)}'")
+                }
             }
-
             fixture?.hasMatch == true && fixture.utcDate.isNotBlank() -> {
                 val remaining = FixtureRepository.remainingMillis(fixture.utcDate)
                 if (remaining > 0L) {
@@ -464,27 +280,11 @@ private class FixtureFactory(
                         views.setTextViewText(R.id.countdown, formatHoursOnly(remaining))
                     }
                 } else {
-                    val elapsed = -remaining
-                    val maxPlausibleMatchMs = 3L * 60L * 60L * 1000L + 30L * 60L * 1000L
                     views.setViewVisibility(R.id.countdown_label, View.VISIBLE)
                     views.setViewVisibility(R.id.countdown, View.VISIBLE)
-                    if (elapsed <= maxPlausibleMatchMs) {
-                        // Provider state can lag a little at kickoff. Locally advance the
-                        // match clock, but never keep LIVE forever after the plausible end.
-                        views.setTextViewText(R.id.countdown_label, "MATCH TIME")
-                        if (showDetail) {
-                            views.setChronometer(R.id.countdown, SystemClock.elapsedRealtime() - elapsed, "%s", true)
-                            views.setChronometerCountDown(R.id.countdown, false)
-                        } else {
-                            val minute = (elapsed / 60_000L).coerceAtLeast(1L).coerceAtMost(130L)
-                            views.setChronometer(R.id.countdown, SystemClock.elapsedRealtime(), "%s", false)
-                            views.setTextViewText(R.id.countdown, "${minute}'")
-                        }
-                    } else {
-                        views.setTextViewText(R.id.countdown_label, "STATUS")
-                        views.setChronometer(R.id.countdown, SystemClock.elapsedRealtime(), "%s", false)
-                        views.setTextViewText(R.id.countdown, "更新待ち")
-                    }
+                    views.setTextViewText(R.id.countdown_label, "LIVE")
+                    views.setChronometer(R.id.countdown, SystemClock.elapsedRealtime(), "%s", false)
+                    views.setTextViewText(R.id.countdown, "LIVE")
                 }
             }
             else -> {

@@ -92,7 +92,6 @@ object ExternalAppLauncher {
                 try {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
                         setPackage(packageName)
-                        addCategory(Intent.CATEGORY_BROWSABLE)
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                     }
                     if (intent.resolveActivity(context.packageManager) != null) {
@@ -126,7 +125,6 @@ object ExternalAppLauncher {
         return try {
             context.startActivity(
                 Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                    addCategory(Intent.CATEGORY_BROWSABLE)
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
             )

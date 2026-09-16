@@ -36,7 +36,7 @@ object SupplementalWidgetRepository {
         val previous = loadPlayerCache(context).associateBy { it.playerId }
         val items = hydrated.map { player ->
             val extra = rich[player.id]
-            val event = extra?.live?.takeIf { it.isLive } ?: extra?.next
+            val event = extra?.live ?: extra?.next
             val fixture = event?.asFixture(player.id, player.name, extra?.sofaTeamId ?: 0)
                 ?: previous[player.id]?.fixture
                 ?: runCatching {
@@ -55,52 +55,21 @@ object SupplementalWidgetRepository {
         return items
     }
 
-    fun refreshLeagues(
-        context: Context,
-        requestedIds: Set<Int>? = null
-    ): List<LeagueFixtureItem> {
-        val allLeagues = FavoriteEntityRepository.getFavoriteLeagues(context)
-
-        val leagues = if (requestedIds == null || requestedIds.isEmpty()) {
-            allLeagues
-        } else {
-            allLeagues.filter { league ->
-                league.id in requestedIds ||
-                    (league.fotmobId > 0 && league.fotmobId in requestedIds) ||
-                    (league.sofascoreId > 0 &&
-                        (league.sofascoreId in requestedIds || -league.sofascoreId in requestedIds))
-            }
-        }
-
-        val previous = loadLeagueCache(context).associateBy { it.leagueId }
+    fun refreshLeagues(context: Context): List<LeagueFixtureItem> {
+        val leagues = FavoriteEntityRepository.getFavoriteLeagues(context)
         val rich = AdvancedStatsRepository.refreshLeagueRounds(context, leagues)
-
-        runCatching {
-            leagues.firstOrNull {
-                val n = it.name.lowercase()
-                n.contains("champions league") &&
-                    !n.contains("women") &&
-                    !n.contains("女子") &&
-                    !n.contains("youth")
-            }?.let { EntityImageLoader.loadLeague(context, it) }
-        }
-
-        val freshItems = leagues.map { league ->
+        val previous = loadLeagueCache(context).associateBy { it.leagueId }
+        val items = leagues.map { league ->
             val event = rich[league.id]?.events?.firstOrNull { it.isLive }
                 ?: rich[league.id]?.events?.firstOrNull { it.isScheduled }
                 ?: rich[league.id]?.events?.firstOrNull()
-            val fixture = event?.asFixture(-league.id, league.name)
-                ?: previous[league.id]?.fixture
+            val fixture = event?.asFixture(-league.id, league.name) ?: previous[league.id]?.fixture
             LeagueFixtureItem(league.id, league.name, league.country, fixture)
         }
-
-        val freshIds = freshItems.map { it.leagueId }.toSet()
-        val merged = previous.values.filterNot { it.leagueId in freshIds } + freshItems
-        saveLeagueCache(context, merged)
-
-        MatchPhaseScheduler.scheduleFixtures(context, freshItems.mapNotNull { it.fixture })
+        saveLeagueCache(context, items)
+        MatchPhaseScheduler.scheduleFixtures(context, items.mapNotNull { it.fixture })
         prefs(context).edit().putLong(KEY_LEAGUE_UPDATED, System.currentTimeMillis()).apply()
-        return freshItems
+        return items
     }
 
     fun loadPlayerCache(context: Context): List<PlayerFixtureItem> {

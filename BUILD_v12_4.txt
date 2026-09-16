@@ -1,9 +1,7 @@
-v12.4
-- 選手写真の白背景を透明化せず、円形にクロップ
-- FotMobをタップ先にした時、選手/リーグウィジェットも同一試合のFotMob ID/URLを自動解決
-- 公式発表前の予想ラインナップを「スタメン」と表示しないよう修正
-- SofaScoreは confirmed=true の時だけスタメン/ベンチ判定
-- LIVE状態の期限切れ判定を追加し、終了後もLIVEが残る問題を修正
-- キックオフ後はローカル試合時計、3時間30分超はLIVE表示を打ち切り
-- キックオフ前75/60/45分と終了付近120/150/210分にも自動更新
-- versionCode 2000000020
+v12.4 - league directory and icon fixes
+- Keep original photo pixels; circular crop only, no automatic background removal.
+- FotMob league parser supports flat/popular and grouped international/countries, and tries both documented URL variants.
+- Successfully fetched competition index persisted; startup offers saved directory or labeled small FotMob starter list without a network request.
+- Network failures stay visible; offline/starter entries are never misrepresented as live API responses.
+- New minimal monochrome fallback logo and monochrome launcher style 1.
+- Version code 2000000020; requires existing signing key for in-place update.

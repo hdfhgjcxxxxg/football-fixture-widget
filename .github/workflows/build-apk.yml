@@ -24,12 +24,19 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          # The legacy SDK package `tools` was removed. setup-android's default
+          # still tries to install it, so skip default packages and install only
+          # the packages this project actually needs in the next step.
+          packages: ''
 
       - name: Install Android SDK packages
+        shell: bash
         run: |
+          set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Restore fixed signing key
         shell: bash
@@ -57,17 +64,25 @@ jobs:
         if: failure()
         shell: bash
         run: |
+          # Diagnostics must never replace the original failure with a second
+          # failure when Gradle never started and app/build does not exist.
+          set +e
           echo "=== Android build diagnostics ==="
           if [ -f app/build/outputs/logs/manifest-merger-release-report.txt ]; then
             echo "=== manifest-merger-release-report.txt ==="
-            cat app/build/outputs/logs/manifest-merger-release-report.txt
+            cat app/build/outputs/logs/manifest-merger-release-report.txt || true
           fi
-          find app/build -type f \
-            \( -iname '*manifest*report*.txt' -o -iname '*manifest*log*.txt' \) \
-            -print 2>/dev/null | while read -r f; do
-              echo "=== $f ==="
-              cat "$f" || true
-            done
+          if [ -d app/build ]; then
+            find app/build -type f \
+              \( -iname '*manifest*report*.txt' -o -iname '*manifest*log*.txt' \) \
+              -print 2>/dev/null | while read -r f; do
+                echo "=== $f ==="
+                cat "$f" || true
+              done
+          else
+            echo "app/build does not exist: failure happened before the Gradle build step."
+          fi
+          exit 0
 
       - name: Verify APK
         shell: bash

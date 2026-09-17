@@ -13,7 +13,7 @@ object EntityImageLoader {
 
     /** SofaScore画像を優先し、IDが不足している旧お気に入りは名前検索で自動解決する。 */
     fun loadPlayer(context: Context, player: FavoritePlayer): Bitmap? {
-        val direct = loadPlayerAvatar(context, "player_avatar_v124_${player.id}", FavoriteEntityRepository.playerImageUrls(player))
+        val direct = loadPlayerAvatar(context, "player_original_v124_${player.id}", FavoriteEntityRepository.playerImageUrls(player))
         if (direct != null) return direct
 
         val resolved = runCatching {
@@ -25,14 +25,14 @@ object EntityImageLoader {
                 .firstOrNull()
         }.getOrNull()
         return if (resolved != null) {
-            loadPlayerAvatar(context, "player_avatar_v124_${player.id}_cross", FavoriteEntityRepository.playerImageUrls(resolved))
+            loadPlayerAvatar(context, "player_original_v124_${player.id}_cross", FavoriteEntityRepository.playerImageUrls(resolved))
         } else null
     }
 
 
     private fun loadPlayerAvatar(context: Context, key: String, urls: List<String>): Bitmap? {
-        val raw = load(context, key, urls) ?: return null
-        return runCatching { AvatarProcessor.preparePlayerAvatar(raw) }.getOrDefault(raw)
+        // Preserve the original picture, including the photographer's background.
+        return load(context, key, urls)
     }
 
     fun loadLeague(context: Context, league: FavoriteLeague): Bitmap? {

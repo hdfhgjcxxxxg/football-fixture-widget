@@ -1,7 +1,7 @@
-v12.4 - league directory and icon fixes
-- Keep original photo pixels; circular crop only, no automatic background removal.
-- FotMob league parser supports flat/popular and grouped international/countries, and tries both documented URL variants.
-- Successfully fetched competition index persisted; startup offers saved directory or labeled small FotMob starter list without a network request.
-- Network failures stay visible; offline/starter entries are never misrepresented as live API responses.
-- New minimal monochrome fallback logo and monochrome launcher style 1.
-- Version code 2000000020; requires existing signing key for in-place update.
+v12.4 (source patch; APK build pending)
+- Player photos preserve original backgrounds; white-background transparency and cut-out processing removed.
+- Offline league directory fallback from successful cached directories, then saved favorites; in FotMob-capable mode includes three documented starter competition IDs when no cache exists.
+- Offline status clearly labeled, not shown as API connection success.
+- League pickers use unfiltered adapters.
+- Default launcher icon is the user-approved simpler monochrome design.
+- versionCode 2000000020, versionName 12.4

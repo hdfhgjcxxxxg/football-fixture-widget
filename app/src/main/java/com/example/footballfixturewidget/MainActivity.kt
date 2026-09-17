@@ -108,8 +108,9 @@ class MainActivity : AppCompatActivity() {
             refreshPlayerFavoritesUi()
             refreshLeagueFavoritesUi()
 
-            // Show saved/known choices without any network request during startup.
-            showAvailableOfflineLeagues()
+            // No automatic SofaScore request here. This is the key safe-start change.
+            apiBadge.text = "待機中"
+            apiStatus.text = "取得元: ${DataSourceManager.label(this)} • 「接続を確認」で接続します"
             setBusy(false)
         } catch (t: Throwable) {
             RuntimeCrashStore.record(this, "MainActivity.onCreate", t)
@@ -190,7 +191,9 @@ class MainActivity : AppCompatActivity() {
             selectedFavoriteLeague = null
             apiBadge.text = "待機中"
             apiStatus.text = "取得元: ${DataSourceManager.label(mode)} • 接続を確認してください"
-            showAvailableOfflineLeagues()
+            leagueOptions = emptyList()
+            leagueDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, emptyList<String>()))
+            favoriteLeagueDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, emptyList<String>()))
         }
     }
 
@@ -403,19 +406,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showAvailableOfflineLeagues() {
-        val (leagues, source) = FixtureRepository.savedOrStarterLeagueDirectory(this)
-        if (leagues.isNotEmpty()) {
-            applyLeagueDirectory(leagues, false, source)
-        } else {
-            leagueOptions = emptyList()
-            leagueDropdown.setAdapter(createUnfilteredAdapter(emptyList()))
-            favoriteLeagueDropdown.setAdapter(createUnfilteredAdapter(emptyList()))
-            apiBadge.text = "待機中"
-            apiStatus.text = "${DataSourceManager.label(this)} • 保存データなし。接続を確認してください"
-        }
-    }
-
     private fun migrateAndLoadLeagues() {
         setBusy(true)
         Thread {
@@ -424,20 +414,13 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 setBusy(false)
                 if (migrated) refreshFavoritesUi()
-                result.onSuccess {
-                    FixtureRepository.saveLeagueDirectory(this, it)
-                    applyLeagueDirectory(it, false)
-                }.onFailure { showLeagueDirectoryFailure(it) }
+                result.onSuccess { applyLeagueDirectory(it, false) }
+                    .onFailure {
+                        apiBadge.text = "再試行"
+                        apiStatus.text = "リーグ一覧を取得できません • ${DataSourceManager.label(this)} を再確認してください"
+                    }
             }
         }.start()
-    }
-
-    private fun showLeagueDirectoryFailure(error: Throwable) {
-        if (leagueOptions.isEmpty()) showAvailableOfflineLeagues()
-        apiBadge.text = "取得失敗"
-        val suffix = if (leagueOptions.isNotEmpty()) "保存/標準リストから選択可能" else "保存データなし"
-        apiStatus.text = "${DataSourceManager.label(this)}: ${error.message ?: "通信エラー"} • $suffix"
-        toast("リーグの最新一覧は取得できませんでした。$suffix")
     }
 
     private fun loadLeagueDirectory(showSuccessToast: Boolean) {
@@ -447,32 +430,33 @@ class MainActivity : AppCompatActivity() {
             val result = runCatching { FixtureRepository.fetchLeagueDirectory() }
             runOnUiThread {
                 setBusy(false)
-                result.onSuccess {
-                    FixtureRepository.saveLeagueDirectory(this, it)
-                    applyLeagueDirectory(it, showSuccessToast)
-                }.onFailure { showLeagueDirectoryFailure(it) }
+                result.onSuccess { applyLeagueDirectory(it, showSuccessToast) }
+                    .onFailure {
+                        apiBadge.text = "エラー"
+                        apiStatus.text = "接続失敗 • ${it.message ?: "通信エラー"}"
+                        toast("リーグ一覧の取得に失敗しました")
+                    }
             }
         }.start()
     }
 
-    private fun applyLeagueDirectory(leagues: List<LeagueInfo>, showToast: Boolean, offlineSource: String? = null) {
+    private fun applyLeagueDirectory(leagues: List<LeagueInfo>, showToast: Boolean) {
         leagueOptions = leagues
         selectedLeague = null
         selectedFavoriteLeague = null
         val labels = leagues.map { it.label }
-        leagueDropdown.threshold = 0
-        favoriteLeagueDropdown.threshold = 0
         leagueDropdown.setAdapter(createUnfilteredAdapter(labels))
         leagueDropdown.setText("", false)
         favoriteLeagueDropdown.setAdapter(createUnfilteredAdapter(labels))
         favoriteLeagueDropdown.setText("", false)
-        if (offlineSource == null) {
-            apiBadge.text = "一覧取得済み"
-            apiStatus.text = "${DataSourceManager.label(this)} • ${leagues.size}リーグ/大会（最新一覧）"
-            if (showToast) toast("${leagues.size}大会を取得しました")
+        if (FixtureRepository.lastLeagueDirectoryWasOffline) {
+            apiBadge.text = "保存データ"
+            apiStatus.text = "通信失敗 • 保存済みの${leagues.size}大会を表示中（最新データではありません）"
+            if (showToast) toast("通信に失敗したため、保存済みリーグ一覧を表示します")
         } else {
-            apiBadge.text = "オフライン"
-            apiStatus.text = "${DataSourceManager.label(this)} • $offlineSource ${leagues.size}件 • 最新の一覧は未確認"
+            apiBadge.text = "接続済み"
+            apiStatus.text = "${DataSourceManager.label(this)} • ${leagues.size}リーグ/大会"
+            if (showToast) toast("接続OK：${leagues.size}大会を取得しました")
         }
     }
 

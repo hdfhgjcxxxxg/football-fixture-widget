@@ -6,11 +6,11 @@
     android:background="@drawable/widget_background"
     android:clipToOutline="true"
     android:orientation="vertical"
-    android:padding="10dp">
+    android:padding="8dp">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="36dp"
+        android:layout_height="34dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
@@ -43,18 +43,18 @@
 
         <TextView
             android:id="@+id/refresh_button"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
             android:background="@drawable/widget_action_background"
             android:gravity="center"
             android:text="↻"
-            android:textSize="20sp" />
+            android:textSize="19sp" />
     </LinearLayout>
 
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="3dp"
         android:layout_weight="1">
 
         <ListView
@@ -62,7 +62,7 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:divider="@android:color/transparent"
-            android:dividerHeight="5dp"
+            android:dividerHeight="4dp"
             android:scrollbars="none" />
 
         <TextView
@@ -71,18 +71,18 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:padding="18dp"
-            android:text="アプリを開いて\nお気に入りチームを追加"
+            android:text="アプリを開いて&#10;お気に入りチームを追加"
             android:textSize="13sp" />
     </FrameLayout>
 
     <TextView
         android:id="@+id/status_text"
         android:layout_width="match_parent"
-        android:layout_height="16dp"
+        android:layout_height="14dp"
         android:gravity="center_vertical|end"
         android:ellipsize="end"
         android:maxLines="1"
         android:text="自動データ • 未更新"
-        android:textSize="8sp" />
+        android:textSize="7.5sp" />
 
 </LinearLayout>

@@ -74,7 +74,7 @@ private class FixtureFactory(
             val matchup = when {
                 live != null -> "${live.homeName} ${live.scoreText} ${live.awayName}"
                 last != null && next != null -> "前 ${last.homeName} ${last.scoreText} ${last.awayName}\n次 ${if (next.homeId == extra.sofaTeamId) "vs ${next.awayName}" else "@ ${next.homeName}"}"
-                fixture != null -> (if (fixture.isHome) "vs " else "@ ") + fixture.opponent
+                fixture != null -> "次節 " + (if (fixture.isHome) "vs " else "@ ") + fixture.opponent
                 else -> "日程を取得中"
             }
             val form = extra?.recentForm?.take(5)?.joinToString(" ").orEmpty()
@@ -84,7 +84,7 @@ private class FixtureFactory(
             ).filter(String::isNotBlank).joinToString(" • ")
             val bottom = when {
                 live != null -> "試合中 • ${live.competition}"
-                next != null -> "次 ${FixtureRepository.formatDate(Instant.ofEpochSecond(next.startTimestamp).toString())}"
+                next != null -> "次節 ${FixtureRepository.formatDate(Instant.ofEpochSecond(next.startTimestamp).toString())}"
                 last != null -> "前試合 ${last.scoreText}"
                 fixture?.hasMatch == true -> FixtureRepository.formatDate(fixture.utcDate)
                 else -> "日時未定"
@@ -109,7 +109,7 @@ private class FixtureFactory(
             }
             val matchup = when {
                 live != null -> "${live.homeName} ${live.scoreText} ${live.awayName}"
-                fixture != null -> (if (fixture.isHome) "vs " else "@ ") + fixture.opponent
+                fixture != null -> "次節 " + (if (fixture.isHome) "vs " else "@ ") + fixture.opponent
                 else -> "次の試合を取得中"
             }
             val ratings = extra?.recentRatings?.take(5)?.joinToString("  ").orEmpty()

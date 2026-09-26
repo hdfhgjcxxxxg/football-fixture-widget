@@ -2,20 +2,20 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/row_root"
     android:layout_width="match_parent"
-    android:layout_height="84dp"
+    android:layout_height="96dp"
     android:background="@drawable/widget_row_background"
     android:clipToOutline="true"
     android:gravity="center_vertical"
     android:orientation="horizontal"
     android:paddingStart="9dp"
-    android:paddingTop="5dp"
+    android:paddingTop="6dp"
     android:paddingEnd="9dp"
-    android:paddingBottom="5dp">
+    android:paddingBottom="6dp">
 
     <ImageView
         android:id="@+id/team_logo"
-        android:layout_width="42dp"
-        android:layout_height="42dp"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
         android:contentDescription="チームロゴ"
         android:scaleType="centerInside" />
 
@@ -44,7 +44,7 @@
             android:layout_marginTop="1dp"
             android:ellipsize="end"
             android:maxLines="2"
-            android:text="前 Brighton 3-0 Arsenal&#10;次 vs Liverpool"
+            android:text="前 Brighton 3-0 Arsenal&#10;次節 vs Liverpool"
             android:textSize="9.5sp"
             android:textStyle="bold" />
 
@@ -64,7 +64,7 @@
             android:layout_height="wrap_content"
             android:ellipsize="end"
             android:maxLines="1"
-            android:text="次 10/10 (土) 20:30"
+            android:text="次節 10/10 (土) 20:30"
             android:textSize="8sp" />
     </LinearLayout>
 

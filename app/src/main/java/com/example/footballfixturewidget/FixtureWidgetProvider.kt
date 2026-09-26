@@ -32,7 +32,13 @@ private object WidgetRenderer {
         kind: String,
         statusOverride: String?
     ) {
-        val views = RemoteViews(context.packageName, R.layout.widget_fixture)
+        val fontStyle = WidgetSelectionStore.getFontStyle(context, widgetId, kind)
+        val widgetLayout = when (fontStyle) {
+            WidgetSelectionStore.FONT_NTYPE82 -> R.layout.widget_fixture_ntype82
+            WidgetSelectionStore.FONT_NDOT57 -> R.layout.widget_fixture_ndot57
+            else -> R.layout.widget_fixture
+        }
+        val views = RemoteViews(context.packageName, widgetLayout)
         val color = FixtureRepository.getWidgetColor(context)
         val primaryText = FixtureRepository.preferredTextColor(color)
         val secondaryText = FixtureRepository.secondaryTextColor(color)

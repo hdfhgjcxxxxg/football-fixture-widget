@@ -11,11 +11,16 @@ object WidgetKinds {
 }
 
 object WidgetSelectionStore {
+    const val FONT_SYSTEM = "system"
+    const val FONT_NTYPE82 = "ntype82"
+    const val FONT_NDOT57 = "ndot57"
+
     private const val PREFS = "widget_instance_prefs"
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private fun key(widgetId: Int, kind: String) = "selection_${kind}_$widgetId"
     private fun countdownDetailKey(widgetId: Int, kind: String) = "countdown_detail_${kind}_$widgetId"
+    private fun fontStyleKey(widgetId: Int, kind: String) = "font_style_${kind}_$widgetId"
 
     fun getSelectedIds(context: Context, widgetId: Int, kind: String): List<Int> {
         val raw = prefs(context).getString(key(widgetId, kind), null)
@@ -54,14 +59,28 @@ object WidgetSelectionStore {
         prefs(context).edit().putBoolean(countdownDetailKey(widgetId, kind), show).apply()
     }
 
+    fun getFontStyle(context: Context, widgetId: Int, kind: String): String =
+        prefs(context).getString(fontStyleKey(widgetId, kind), FONT_SYSTEM)
+            ?.takeIf { it == FONT_SYSTEM || it == FONT_NTYPE82 || it == FONT_NDOT57 }
+            ?: FONT_SYSTEM
+
+    fun saveFontStyle(context: Context, widgetId: Int, kind: String, style: String) {
+        if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) return
+        val safe = if (style == FONT_NTYPE82 || style == FONT_NDOT57) style else FONT_SYSTEM
+        prefs(context).edit().putString(fontStyleKey(widgetId, kind), safe).apply()
+    }
+
     fun deleteWidget(context: Context, widgetId: Int) {
         prefs(context).edit()
             .remove(key(widgetId, WidgetKinds.TEAM))
             .remove(key(widgetId, WidgetKinds.PLAYER))
             .remove(key(widgetId, WidgetKinds.LEAGUE))
             .remove(countdownDetailKey(widgetId, WidgetKinds.TEAM))
+            .remove(fontStyleKey(widgetId, WidgetKinds.TEAM))
             .remove(countdownDetailKey(widgetId, WidgetKinds.PLAYER))
+            .remove(fontStyleKey(widgetId, WidgetKinds.PLAYER))
             .remove(countdownDetailKey(widgetId, WidgetKinds.LEAGUE))
+            .remove(fontStyleKey(widgetId, WidgetKinds.LEAGUE))
             .apply()
     }
 

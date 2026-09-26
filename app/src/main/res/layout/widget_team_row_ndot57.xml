@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/row_root"
+    android:layout_width="match_parent"
+    android:layout_height="96dp"
+    android:background="@drawable/widget_row_background"
+    android:clipToOutline="true"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="9dp"
+    android:paddingTop="6dp"
+    android:paddingEnd="9dp"
+    android:paddingBottom="6dp">
+
+    <ImageView
+        android:id="@+id/team_logo"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:contentDescription="チームロゴ"
+        android:scaleType="centerInside" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_marginStart="10dp"
+        android:layout_weight="1"
+        android:gravity="center_vertical"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/team_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="Arsenal"
+            android:textSize="12.5sp"
+            android:textStyle="bold"
+        android:fontFamily="NDot57" />
+
+        <TextView
+            android:id="@+id/matchup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:text="前 Brighton 3-0 Arsenal&#10;次節 vs Liverpool"
+            android:textSize="9.5sp"
+            android:textStyle="bold"
+        android:fontFamily="NDot57" />
+
+        <TextView
+            android:id="@+id/competition"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="Premier League • 直近5"
+            android:textSize="7.5sp"
+        android:fontFamily="NDot57" />
+
+        <TextView
+            android:id="@+id/date_time"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="次節 10/10 (土) 20:30"
+            android:textSize="8sp"
+        android:fontFamily="NDot57" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/countdown_box"
+        android:layout_width="86dp"
+        android:layout_height="match_parent"
+        android:layout_marginStart="6dp"
+        android:gravity="center_vertical|end"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/countdown_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="end"
+            android:text="KICKOFF IN"
+            android:textSize="7sp"
+            android:textStyle="bold"
+        android:fontFamily="NDot57" />
+
+        <Chronometer
+            android:id="@+id/countdown"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="end"
+            android:fontFamily="NDot57"
+            android:text="23:59:59"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/open_hint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:gravity="end"
+            android:maxLines="1"
+            android:text="FotMob ↗"
+            android:textSize="7sp"
+        android:fontFamily="NDot57" />
+    </LinearLayout>
+</LinearLayout>

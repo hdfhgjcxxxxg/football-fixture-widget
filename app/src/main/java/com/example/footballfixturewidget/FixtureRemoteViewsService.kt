@@ -197,7 +197,12 @@ private class FixtureFactory(
     override fun getViewAt(position: Int): RemoteViews? {
         val row = rows.getOrNull(position) ?: return null
         val fixture = row.fixture
-        val views = RemoteViews(context.packageName, R.layout.widget_team_row)
+        val rowLayout = when (WidgetSelectionStore.getFontStyle(context, widgetId, kind)) {
+            WidgetSelectionStore.FONT_NTYPE82 -> R.layout.widget_team_row_ntype82
+            WidgetSelectionStore.FONT_NDOT57 -> R.layout.widget_team_row_ndot57
+            else -> R.layout.widget_team_row
+        }
+        val views = RemoteViews(context.packageName, rowLayout)
         val background = FixtureRepository.getWidgetColor(context)
         val primary = FixtureRepository.preferredTextColor(background)
         val secondary = FixtureRepository.secondaryTextColor(background)

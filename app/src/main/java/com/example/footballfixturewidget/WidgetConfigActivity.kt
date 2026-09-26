@@ -10,6 +10,8 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -33,6 +35,7 @@ abstract class BaseWidgetConfigActivity : AppCompatActivity() {
     private lateinit var searchInput: TextInputEditText
     private lateinit var progress: ProgressBar
     private lateinit var countdownDetailSwitch: MaterialSwitch
+    private lateinit var fontRadioGroup: RadioGroup
     private val selectedWorking = LinkedHashSet<Int>()
     private val density by lazy { resources.displayMetrics.density }
     private fun dp(v: Int) = (v * density).toInt()
@@ -78,6 +81,7 @@ abstract class BaseWidgetConfigActivity : AppCompatActivity() {
         })
 
         addCountdownSetting()
+        addFontSetting()
         addSearchArea()
 
         root.addView(TextView(this).apply {
@@ -123,6 +127,44 @@ abstract class BaseWidgetConfigActivity : AppCompatActivity() {
         row.addView(countdownDetailSwitch)
         card.addView(row)
         root.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+    }
+
+    private fun addFontSetting() {
+        val card = MaterialCardView(this).apply {
+            radius = dp(18).toFloat(); cardElevation = 0f
+            setCardBackgroundColor(resolveThemeColor(com.google.android.material.R.attr.colorSurfaceContainerLow))
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(12), dp(14), dp(12))
+        }
+        box.addView(TextView(this).apply {
+            text = "ウィジェットのフォント"; textSize = 15f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
+        box.addView(TextView(this).apply {
+            text = "標準 / Nothing NType82 / Nothing NDot57 から選択"
+            textSize = 12f
+            setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+            setPadding(0, dp(2), 0, dp(6))
+        })
+        val current = WidgetSelectionStore.getFontStyle(this, widgetId, kind)
+        fontRadioGroup = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+        fun addChoice(label: String, value: String) {
+            fontRadioGroup.addView(RadioButton(this).apply {
+                id = View.generateViewId()
+                text = label
+                tag = value
+                isChecked = current == value
+                textSize = 14f
+            })
+        }
+        addChoice("標準（システムフォント）", WidgetSelectionStore.FONT_SYSTEM)
+        addChoice("Nothing NType82", WidgetSelectionStore.FONT_NTYPE82)
+        addChoice("Nothing NDot57", WidgetSelectionStore.FONT_NDOT57)
+        box.addView(fontRadioGroup)
+        card.addView(box)
+        root.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
     }
 
     private fun addSearchArea() {
@@ -283,6 +325,9 @@ abstract class BaseWidgetConfigActivity : AppCompatActivity() {
         if (selectedWorking.isEmpty()) { toast("表示する${entityLabel}を1つ以上選んでください"); return }
         WidgetSelectionStore.saveSelectedIds(this, widgetId, kind, selectedWorking)
         WidgetSelectionStore.saveDetailedCountdown(this, widgetId, kind, countdownDetailSwitch.isChecked)
+        val selectedFont = fontRadioGroup.findViewById<RadioButton>(fontRadioGroup.checkedRadioButtonId)?.tag?.toString()
+            ?: WidgetSelectionStore.FONT_SYSTEM
+        WidgetSelectionStore.saveFontStyle(this, widgetId, kind, selectedFont)
         when (kind) {
             WidgetKinds.PLAYER -> { PlayerWidgetProvider.renderAll(this, "更新中…"); sendBroadcast(Intent(this, PlayerWidgetProvider::class.java).apply { action = PlayerWidgetProvider.ACTION_REFRESH }) }
             WidgetKinds.LEAGUE -> { LeagueWidgetProvider.renderAll(this, "更新中…"); sendBroadcast(Intent(this, LeagueWidgetProvider::class.java).apply { action = LeagueWidgetProvider.ACTION_REFRESH }) }

@@ -2,27 +2,27 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/row_root"
     android:layout_width="match_parent"
-    android:layout_height="112dp"
+    android:layout_height="84dp"
     android:background="@drawable/widget_row_background"
     android:clipToOutline="true"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:paddingStart="10dp"
-    android:paddingTop="8dp"
-    android:paddingEnd="10dp"
-    android:paddingBottom="8dp">
+    android:paddingStart="9dp"
+    android:paddingTop="5dp"
+    android:paddingEnd="9dp"
+    android:paddingBottom="5dp">
 
     <ImageView
         android:id="@+id/team_logo"
-        android:layout_width="52dp"
-        android:layout_height="52dp"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
         android:contentDescription="チームロゴ"
         android:scaleType="centerInside" />
 
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="match_parent"
-        android:layout_marginStart="12dp"
+        android:layout_marginStart="10dp"
         android:layout_weight="1"
         android:gravity="center_vertical"
         android:orientation="vertical">
@@ -34,45 +34,45 @@
             android:ellipsize="end"
             android:maxLines="1"
             android:text="Arsenal"
-            android:textSize="14sp"
+            android:textSize="12.5sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/matchup"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:layout_marginTop="1dp"
             android:ellipsize="end"
-            android:maxLines="1"
-            android:text="vs Liverpool"
-            android:textSize="12sp"
+            android:maxLines="2"
+            android:text="前 Brighton 3-0 Arsenal&#10;次 vs Liverpool"
+            android:textSize="9.5sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/competition"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:layout_marginTop="1dp"
             android:ellipsize="end"
-            android:maxLines="2"
-            android:text="Premier League"
-            android:textSize="9sp" />
+            android:maxLines="1"
+            android:text="Premier League • 直近5"
+            android:textSize="7.5sp" />
 
         <TextView
             android:id="@+id/date_time"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:ellipsize="end"
-            android:maxLines="2"
-            android:text="8/30 (日) 22:00"
-            android:textSize="10sp" />
+            android:maxLines="1"
+            android:text="次 10/10 (土) 20:30"
+            android:textSize="8sp" />
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/countdown_box"
-        android:layout_width="90dp"
+        android:layout_width="86dp"
         android:layout_height="match_parent"
-        android:layout_marginStart="8dp"
+        android:layout_marginStart="6dp"
         android:gravity="center_vertical|end"
         android:orientation="vertical">
 
@@ -82,7 +82,7 @@
             android:layout_height="wrap_content"
             android:gravity="end"
             android:text="KICKOFF IN"
-            android:textSize="8sp"
+            android:textSize="7sp"
             android:textStyle="bold" />
 
         <Chronometer
@@ -92,18 +92,18 @@
             android:gravity="end"
             android:fontFamily="monospace"
             android:text="23:59:59"
-            android:textSize="13sp"
+            android:textSize="11sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/open_hint"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="5dp"
+            android:layout_marginTop="2dp"
             android:ellipsize="end"
             android:gravity="end"
             android:maxLines="1"
             android:text="FotMob ↗"
-            android:textSize="8sp" />
+            android:textSize="7sp" />
     </LinearLayout>
 </LinearLayout>

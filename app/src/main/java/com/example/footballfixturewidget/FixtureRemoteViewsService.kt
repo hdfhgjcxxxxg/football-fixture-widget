@@ -73,7 +73,7 @@ private class FixtureFactory(
             }
             val matchup = when {
                 live != null -> "${live.homeName} ${live.scoreText} ${live.awayName}"
-                last != null && next != null -> "前 ${last.homeName} ${last.scoreText} ${last.awayName}  •  次 ${if (next.homeId == extra.sofaTeamId) "vs ${next.awayName}" else "@ ${next.homeName}"}"
+                last != null && next != null -> "前 ${last.homeName} ${last.scoreText} ${last.awayName}\n次 ${if (next.homeId == extra.sofaTeamId) "vs ${next.awayName}" else "@ ${next.homeName}"}"
                 fixture != null -> (if (fixture.isHome) "vs " else "@ ") + fixture.opponent
                 else -> "日程を取得中"
             }

@@ -1,0 +1,1 @@
+v12.5\n- Compact widget rows to fit two items without clipping.\n- Previous and next match are shown on separate lines.\n- Header/footer spacing reduced.\n- Countdown area slightly compacted while remaining readable.\n

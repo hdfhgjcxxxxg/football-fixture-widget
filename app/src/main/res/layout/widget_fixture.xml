@@ -79,10 +79,13 @@
         android:id="@+id/status_text"
         android:layout_width="match_parent"
         android:layout_height="14dp"
-        android:gravity="center_vertical|end"
         android:ellipsize="end"
+        android:fontFamily="monospace"
+        android:gravity="center_vertical|end"
+        android:includeFontPadding="false"
+        android:letterSpacing="0.05"
         android:maxLines="1"
-        android:text="自動データ • 未更新"
+        android:text="結合  ・  更新 09/26 21:24"
         android:textSize="7.5sp" />
 
 </LinearLayout>

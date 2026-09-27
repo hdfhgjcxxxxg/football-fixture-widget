@@ -21,6 +21,7 @@ object WidgetSelectionStore {
     private fun key(widgetId: Int, kind: String) = "selection_${kind}_$widgetId"
     private fun countdownDetailKey(widgetId: Int, kind: String) = "countdown_detail_${kind}_$widgetId"
     private fun fontStyleKey(widgetId: Int, kind: String) = "font_style_${kind}_$widgetId"
+    private fun textSizeKey(widgetId: Int, kind: String) = "text_size_${kind}_$widgetId"
 
     fun getSelectedIds(context: Context, widgetId: Int, kind: String): List<Int> {
         val raw = prefs(context).getString(key(widgetId, kind), null)
@@ -70,6 +71,23 @@ object WidgetSelectionStore {
         prefs(context).edit().putString(fontStyleKey(widgetId, kind), safe).apply()
     }
 
+    /**
+     * Widget text size level: 1..100. 50 keeps the current/default size.
+     * The rendered scale is intentionally bounded so even 100 remains usable.
+     */
+    fun getTextSizeLevel(context: Context, widgetId: Int, kind: String): Int =
+        prefs(context).getInt(textSizeKey(widgetId, kind), 50).coerceIn(1, 100)
+
+    fun saveTextSizeLevel(context: Context, widgetId: Int, kind: String, level: Int) {
+        if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) return
+        prefs(context).edit().putInt(textSizeKey(widgetId, kind), level.coerceIn(1, 100)).apply()
+    }
+
+    fun textSizeScale(context: Context, widgetId: Int, kind: String): Float {
+        val level = getTextSizeLevel(context, widgetId, kind)
+        return 0.5f + (level / 100f) // 1=0.51x, 50=1.0x, 100=1.5x
+    }
+
     fun deleteWidget(context: Context, widgetId: Int) {
         prefs(context).edit()
             .remove(key(widgetId, WidgetKinds.TEAM))
@@ -77,10 +95,13 @@ object WidgetSelectionStore {
             .remove(key(widgetId, WidgetKinds.LEAGUE))
             .remove(countdownDetailKey(widgetId, WidgetKinds.TEAM))
             .remove(fontStyleKey(widgetId, WidgetKinds.TEAM))
+            .remove(textSizeKey(widgetId, WidgetKinds.TEAM))
             .remove(countdownDetailKey(widgetId, WidgetKinds.PLAYER))
             .remove(fontStyleKey(widgetId, WidgetKinds.PLAYER))
+            .remove(textSizeKey(widgetId, WidgetKinds.PLAYER))
             .remove(countdownDetailKey(widgetId, WidgetKinds.LEAGUE))
             .remove(fontStyleKey(widgetId, WidgetKinds.LEAGUE))
+            .remove(textSizeKey(widgetId, WidgetKinds.LEAGUE))
             .apply()
     }
 

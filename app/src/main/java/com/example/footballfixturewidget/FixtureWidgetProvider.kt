@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Build
+import android.util.TypedValue
 import android.widget.RemoteViews
 
 private object WidgetRenderer {
@@ -60,6 +61,15 @@ private object WidgetRenderer {
         views.setTextColor(R.id.refresh_button, primaryText)
         views.setTextColor(R.id.status_text, secondaryText)
         views.setTextColor(R.id.empty_text, secondaryText)
+
+        val textScale = WidgetSelectionStore.textSizeScale(context, widgetId, kind)
+        fun size(viewId: Int, baseSp: Float) {
+            views.setTextViewTextSize(viewId, TypedValue.COMPLEX_UNIT_SP, baseSp * textScale)
+        }
+        size(R.id.widget_title, 15f)
+        size(R.id.widget_subtitle, 10f)
+        size(R.id.status_text, 7.5f)
+        size(R.id.empty_text, 13f)
 
         val title = when (kind) {
             WidgetKinds.PLAYER -> "FAVORITE PLAYERS"

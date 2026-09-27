@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.res.ColorStateList
 import android.os.Build
 import android.os.SystemClock
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
@@ -213,6 +214,18 @@ private class FixtureFactory(
 
         listOf(R.id.team_name, R.id.matchup, R.id.countdown).forEach { views.setTextColor(it, primary) }
         listOf(R.id.date_time, R.id.competition, R.id.open_hint, R.id.countdown_label).forEach { views.setTextColor(it, secondary) }
+
+        val textScale = WidgetSelectionStore.textSizeScale(context, widgetId, kind)
+        fun size(viewId: Int, baseSp: Float) {
+            views.setTextViewTextSize(viewId, TypedValue.COMPLEX_UNIT_SP, baseSp * textScale)
+        }
+        size(R.id.team_name, 12.5f)
+        size(R.id.matchup, 9.5f)
+        size(R.id.competition, 7.5f)
+        size(R.id.date_time, 8f)
+        size(R.id.countdown_label, 7f)
+        size(R.id.countdown, 13f)
+        size(R.id.open_hint, 7f)
 
         views.setTextViewText(R.id.team_name, row.title)
         views.setTextViewText(R.id.matchup, row.matchup)

@@ -13,6 +13,7 @@ import android.widget.ProgressBar
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -36,6 +37,8 @@ abstract class BaseWidgetConfigActivity : AppCompatActivity() {
     private lateinit var progress: ProgressBar
     private lateinit var countdownDetailSwitch: MaterialSwitch
     private lateinit var fontRadioGroup: RadioGroup
+    private lateinit var textSizeSeekBar: SeekBar
+    private lateinit var textSizeValue: TextView
     private val selectedWorking = LinkedHashSet<Int>()
     private val density by lazy { resources.displayMetrics.density }
     private fun dp(v: Int) = (v * density).toInt()
@@ -82,6 +85,7 @@ abstract class BaseWidgetConfigActivity : AppCompatActivity() {
 
         addCountdownSetting()
         addFontSetting()
+        addTextSizeSetting()
         addSearchArea()
 
         root.addView(TextView(this).apply {
@@ -163,6 +167,70 @@ abstract class BaseWidgetConfigActivity : AppCompatActivity() {
         addChoice("Nothing NType82", WidgetSelectionStore.FONT_NTYPE82)
         addChoice("Nothing NDot57", WidgetSelectionStore.FONT_NDOT57)
         box.addView(fontRadioGroup)
+        card.addView(box)
+        root.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
+    }
+
+    private fun addTextSizeSetting() {
+        val card = MaterialCardView(this).apply {
+            radius = dp(18).toFloat(); cardElevation = 0f
+            setCardBackgroundColor(resolveThemeColor(com.google.android.material.R.attr.colorSurfaceContainerLow))
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(12), dp(14), dp(12))
+        }
+        val titleRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        titleRow.addView(TextView(this).apply {
+            text = "文字サイズ"; textSize = 15f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        textSizeValue = TextView(this).apply {
+            textSize = 15f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }
+        titleRow.addView(textSizeValue)
+        box.addView(titleRow)
+        box.addView(TextView(this).apply {
+            text = "1〜100で調整（50 = 今の大きさ / 100 = 大きめ）"
+            textSize = 12f
+            setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+            setPadding(0, dp(2), 0, dp(4))
+        })
+
+        val current = WidgetSelectionStore.getTextSizeLevel(this, widgetId, kind)
+        textSizeSeekBar = SeekBar(this).apply {
+            max = 99
+            progress = current - 1
+        }
+        fun updateValue(progress: Int) {
+            textSizeValue.text = (progress + 1).coerceIn(1, 100).toString()
+        }
+        updateValue(textSizeSeekBar.progress)
+        textSizeSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) = updateValue(progress)
+            override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+            override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+        })
+        box.addView(textSizeSeekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
+        val rangeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        rangeRow.addView(TextView(this).apply {
+            text = "1"; textSize = 11f
+            setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        rangeRow.addView(TextView(this).apply {
+            text = "50"; gravity = Gravity.CENTER; textSize = 11f
+            setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        rangeRow.addView(TextView(this).apply {
+            text = "100"; gravity = Gravity.END; textSize = 11f
+            setTextColor(resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        box.addView(rangeRow)
         card.addView(box)
         root.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
     }
@@ -328,6 +396,7 @@ abstract class BaseWidgetConfigActivity : AppCompatActivity() {
         val selectedFont = fontRadioGroup.findViewById<RadioButton>(fontRadioGroup.checkedRadioButtonId)?.tag?.toString()
             ?: WidgetSelectionStore.FONT_SYSTEM
         WidgetSelectionStore.saveFontStyle(this, widgetId, kind, selectedFont)
+        WidgetSelectionStore.saveTextSizeLevel(this, widgetId, kind, textSizeSeekBar.progress + 1)
         when (kind) {
             WidgetKinds.PLAYER -> { PlayerWidgetProvider.renderAll(this, "更新中…"); sendBroadcast(Intent(this, PlayerWidgetProvider::class.java).apply { action = PlayerWidgetProvider.ACTION_REFRESH }) }
             WidgetKinds.LEAGUE -> { LeagueWidgetProvider.renderAll(this, "更新中…"); sendBroadcast(Intent(this, LeagueWidgetProvider::class.java).apply { action = LeagueWidgetProvider.ACTION_REFRESH }) }

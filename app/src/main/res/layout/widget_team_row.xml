@@ -70,9 +70,9 @@
 
     <LinearLayout
         android:id="@+id/countdown_box"
-        android:layout_width="86dp"
+        android:layout_width="94dp"
         android:layout_height="match_parent"
-        android:layout_marginStart="6dp"
+        android:layout_marginStart="4dp"
         android:gravity="center_vertical|end"
         android:orientation="vertical">
 
@@ -92,7 +92,7 @@
             android:gravity="end"
             android:fontFamily="monospace"
             android:text="23:59:59"
-            android:textSize="11sp"
+            android:textSize="13sp"
             android:textStyle="bold" />
 
         <TextView

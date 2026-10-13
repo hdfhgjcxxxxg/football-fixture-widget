@@ -22,10 +22,10 @@ struct FixtureWidgetIntent: WidgetConfigurationIntent {
     static let title: LocalizedStringResource = "Football Fixture"
     static let description = IntentDescription("Android版に近い2チーム表示を設定します。")
 
-    @Parameter(title: "チーム1") var team1: String
-    @Parameter(title: "チーム2") var team2: String
-    @Parameter(title: "文字サイズ 1〜100", inclusiveRange: (1, 100)) var textSize: Int
-    @Parameter(title: "フォント") var fontStyle: FixtureFontStyle
+    @Parameter(title: "チーム1") var team1: String?
+    @Parameter(title: "チーム2") var team2: String?
+    @Parameter(title: "文字サイズ 1〜100", inclusiveRange: (1, 100)) var textSize: Int?
+    @Parameter(title: "フォント") var fontStyle: FixtureFontStyle?
 
     init() {
         team1 = "Arsenal"
@@ -58,8 +58,8 @@ struct FixtureProvider: AppIntentTimelineProvider {
     }
 
     private func load(_ configuration: FixtureWidgetIntent) async -> [TeamSnapshot] {
-        async let a = FootballService.shared.snapshot(for: configuration.team1.isEmpty ? "Arsenal" : configuration.team1)
-        async let b = FootballService.shared.snapshot(for: configuration.team2.isEmpty ? "Japan" : configuration.team2)
+        async let a = FootballService.shared.snapshot(for: configuration.team1.flatMap { $0.isEmpty ? nil : $0 } ?? "Arsenal")
+        async let b = FootballService.shared.snapshot(for: configuration.team2.flatMap { $0.isEmpty ? nil : $0 } ?? "Japan")
         return await [a, b]
     }
 }
@@ -84,7 +84,7 @@ struct FootballFixtureWidgetView: View {
             }
 
             ForEach(entry.teams.prefix(2)) { team in
-                WidgetTeamRow(team: team, scale: scale, style: entry.configuration.fontStyle, renderingMode: renderingMode)
+                WidgetTeamRow(team: team, scale: scale, style: (entry.configuration.fontStyle ?? .nothing), renderingMode: renderingMode)
             }
 
             HStack {
@@ -102,11 +102,11 @@ struct FootballFixtureWidgetView: View {
     }
 
     private var scale: CGFloat {
-        let v = min(100, max(1, entry.configuration.textSize))
+        let v = min(100, max(1, (entry.configuration.textSize ?? 50)))
         return 0.62 + CGFloat(v) / 100.0 * 0.76
     }
 
-    private func font(_ size: CGFloat) -> Font { widgetFont(size: size * scale, style: entry.configuration.fontStyle) }
+    private func font(_ size: CGFloat) -> Font { widgetFont(size: size * scale, style: (entry.configuration.fontStyle ?? .nothing)) }
 }
 
 private struct WidgetTeamRow: View {

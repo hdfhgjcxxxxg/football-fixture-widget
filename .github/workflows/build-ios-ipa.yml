@@ -1,0 +1,59 @@
+name: Build iOS Liquid Glass IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['ios-liquidglass-ipa']
+    paths:
+      - 'ios/**'
+      - '.github/workflows/build-ios-ipa.yml'
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select Xcode 26
+        run: |
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Build unsigned device app
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          rm -rf build Payload FootballFixtureWidget-iOS26-LiquidGlass-unsigned.ipa
+          xcodebuild \
+            -project FootballFixtureWidgetiOS.xcodeproj \
+            -scheme FootballFixture \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            build
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -type d -name 'FootballFixture.app' | head -n 1)
+          test -n "$APP"
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          /usr/bin/zip -qry FootballFixtureWidget-iOS26-LiquidGlass-unsigned.ipa Payload
+          ls -lh FootballFixtureWidget-iOS26-LiquidGlass-unsigned.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: FootballFixtureWidget-iOS26-LiquidGlass-IPA
+          path: ios/FootballFixtureWidget-iOS26-LiquidGlass-unsigned.ipa
+          if-no-files-found: error

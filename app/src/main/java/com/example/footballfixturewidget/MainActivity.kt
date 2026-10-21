@@ -362,6 +362,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupUpdateControls() {
+        // Google Play delivers app updates. Do not show or invoke the APK
+        // downloader/installer on the Play Store build.
+        if (BuildConfig.PLAY_STORE) {
+            autoUpdateSwitch.visibility = View.GONE
+            checkUpdateButton.visibility = View.GONE
+            updateStatus.text = "アプリの更新はGoogle Playストアから配信されます"
+            return
+        }
         autoUpdateSwitch.isChecked = UpdateManager.isAutoEnabled(this)
         updateStatus.text = "現在 v${BuildConfig.VERSION_NAME} • 12時間ごとに更新確認"
         autoUpdateSwitch.setOnCheckedChangeListener { _, checked ->

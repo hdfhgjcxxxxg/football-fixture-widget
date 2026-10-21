@@ -13,7 +13,7 @@ class MatchDayApplication : Application() {
 
         // v12.3: updater startup is deliberately delayed and wrapped so it can
         // never make the launcher crash. The normal app UI starts first.
-        if (UpdateManager.isAutoEnabled(applicationContext)) {
+        if (!BuildConfig.PLAY_STORE && UpdateManager.isAutoEnabled(applicationContext)) {
             runCatching { UpdateManager.schedule(applicationContext) }
             Handler(Looper.getMainLooper()).postDelayed({
                 runCatching {

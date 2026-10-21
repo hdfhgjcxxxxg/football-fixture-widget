@@ -1,0 +1,103 @@
+name: Build Google Play AAB
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.5
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+
+      - name: Restore upload keystore
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.FFW_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.FFW_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.FFW_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.FFW_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "${KEYSTORE_B64:-}" || { echo "Missing FFW_KEYSTORE_BASE64 secret"; exit 1; }
+          test -n "${STORE_PASSWORD:-}" || { echo "Missing FFW_STORE_PASSWORD secret"; exit 1; }
+          test -n "${KEY_ALIAS:-}" || { echo "Missing FFW_KEY_ALIAS secret"; exit 1; }
+          test -n "${KEY_PASSWORD:-}" || { echo "Missing FFW_KEY_PASSWORD secret"; exit 1; }
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$GITHUB_WORKSPACE/ffw-fixed-signing.jks"
+          chmod 600 "$GITHUB_WORKSPACE/ffw-fixed-signing.jks"
+
+      - name: Build signed Play App Bundle
+        shell: bash
+        env:
+          SIGNING_STORE_FILE: ${{ github.workspace }}/ffw-fixed-signing.jks
+          SIGNING_STORE_PASSWORD: ${{ secrets.FFW_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.FFW_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.FFW_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          gradle :app:bundlePlay --no-daemon --stacktrace
+
+      - name: Verify AAB and Play manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUNDLE="app/build/outputs/bundle/play/app-play.aab"
+          test -s "$BUNDLE"
+          jarsigner -verify "$BUNDLE"
+          MANIFEST="$(find app/build/intermediates -type f -name AndroidManifest.xml -path '*play*' | grep -v '/packaged_manifests/' | head -n 1)"
+          test -n "$MANIFEST" || { echo "Play merged AndroidManifest.xml not found"; exit 1; }
+          if grep -q 'android.permission.REQUEST_INSTALL_PACKAGES' "$MANIFEST"; then
+            echo "Play variant still requests package installation permission"
+            exit 1
+          fi
+          if grep -q 'android.permission.RECEIVE_BOOT_COMPLETED' "$MANIFEST"; then
+            echo "Play variant still requests boot receiver permission"
+            exit 1
+          fi
+          VERSION_NAME="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)"
+          test -n "$VERSION_NAME"
+          cp "$BUNDLE" "MatchDayWidget-v${VERSION_NAME}-play.aab"
+          sha256sum "MatchDayWidget-v${VERSION_NAME}-play.aab" > "MatchDayWidget-v${VERSION_NAME}-play.aab.sha256"
+          echo "Verified signed Play AAB: MatchDayWidget-v${VERSION_NAME}-play.aab"
+
+      - name: Upload Google Play AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MatchDayWidget-play-aab
+          path: |
+            MatchDayWidget-v*-play.aab
+            MatchDayWidget-v*-play.aab.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove recovered keystore
+        if: always()
+        shell: bash
+        run: rm -f "$GITHUB_WORKSPACE/ffw-fixed-signing.jks"

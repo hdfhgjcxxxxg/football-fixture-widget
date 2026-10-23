@@ -7,6 +7,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
+        buildConfigField("boolean", "PLAY_STORE", "false")
         applicationId = "com.example.footballfixturewidget"
         minSdk = 26
         targetSdk = 36
@@ -45,6 +46,13 @@ android {
             if (signingConfigs.names.contains("fixed")) {
                 signingConfig = signingConfigs.getByName("fixed")
             }
+        }
+        // A separate, non-debuggable build type for Google Play. The existing
+        // :app:assembleRelease job and its signed sideload APK remain unchanged.
+        create("play") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            buildConfigField("boolean", "PLAY_STORE", "true")
         }
     }
 

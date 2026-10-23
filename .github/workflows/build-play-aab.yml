@@ -81,6 +81,18 @@ jobs:
             echo "Play variant still requests boot receiver permission"
             exit 1
           fi
+          if grep -q 'android.permission.POST_NOTIFICATIONS' "$MANIFEST"; then
+            echo "Play variant still requests notification permission"
+            exit 1
+          fi
+          if grep -q 'UpdateCheckReceiver' "$MANIFEST"; then
+            echo "Play variant still contains the GitHub APK updater receiver"
+            exit 1
+          fi
+          if grep -q 'UpdateInstallActivity' "$MANIFEST"; then
+            echo "Play variant still contains the GitHub APK updater install activity"
+            exit 1
+          fi
           VERSION_NAME="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)"
           test -n "$VERSION_NAME"
           cp "$BUNDLE" "MatchDayWidget-v${VERSION_NAME}-play.aab"

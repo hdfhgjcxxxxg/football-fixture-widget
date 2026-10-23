@@ -5,7 +5,7 @@
 ## 1. Play専用ビルド
 - APK配布: これまで通り `gradle :app:assembleRelease`。既存の `build-apk.yml` は変更しません。
 - Google Play: `gradle :app:bundlePlay`。出力は `app/build/outputs/bundle/play/app-play.aab`。
-- Play版では GitHub APK自動更新のUIとスケジュールを無効化し、APKインストール権限・自動更新用Receiverを削除します。
+- Play版では GitHub APK自動更新のUIとスケジュールを無効化し、`REQUEST_INSTALL_PACKAGES`・`RECEIVE_BOOT_COMPLETED`・`POST_NOTIFICATIONS` の3権限と、自動更新用Receiver（UpdateCheckReceiver）・インストール用Activity（UpdateInstallActivity）を削除します。Play版が要求する権限は `INTERNET` と `ACCESS_NETWORK_STATE` のみです。AABワークフローの検証ステップでも、これらが残っていないことを確認します。
 - API: `targetSdk=36`、`minSdk=26`、`versionCode=2000000026`、`versionName=13.0`。
 - パッケージID: `com.example.footballfixturewidget`。**Play初回リリース前に今後永続的に使うIDを決めてください**。変更すると従来APKと別アプリになります。
 
